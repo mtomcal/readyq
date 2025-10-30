@@ -17,6 +17,9 @@ Usage:
   ./readyq.py update <id> --title "..." --description "..." - Update task metadata
   ./readyq.py update <id> --add-blocks <ids>          - Add tasks this task blocks
   ./readyq.py update <id> --add-blocked-by <ids>      - Add tasks that block this task
+  ./readyq.py update <id> --remove-blocks <ids>       - Remove tasks this task blocks
+  ./readyq.py update <id> --remove-blocked-by <ids>   - Remove tasks that block this task
+  ./readyq.py delete <id>                             - Delete a task and clean up dependencies
   ./readyq.py web                                     - Run web UI on http://localhost:8000
 """
 
@@ -370,6 +373,56 @@ def cmd_update(args):
             else:
                 print(f"Warning: Blocker task '{blocker_id_prefix}' not found. Ignoring.", file=sys.stderr)
 
+    # Remove blocks (tasks that this task blocks)
+    if hasattr(args, 'remove_blocks') and args.remove_blocks:
+        block_ids = [bid.strip() for bid in args.remove_blocks.split(',')]
+
+        for block_id_prefix in block_ids:
+            blocked_task = next((t for t in tasks if t['id'].startswith(block_id_prefix)), None)
+            if blocked_task:
+                # Remove from current task's blocks list
+                if 'blocks' in task and blocked_task['id'] in task['blocks']:
+                    task['blocks'].remove(blocked_task['id'])
+
+                # Remove from blocked task's blocked_by list
+                if 'blocked_by' in blocked_task and task['id'] in blocked_task['blocked_by']:
+                    blocked_task['blocked_by'].remove(task['id'])
+                    blocked_task['updated_at'] = now
+                    # If this was the only blocker, unblock the task
+                    if not blocked_task['blocked_by'] and blocked_task['status'] == 'blocked':
+                        blocked_task['status'] = 'open'
+                        print(f"Task {get_short_id(blocked_task['id'])} is now unblocked.")
+
+                updated = True
+                print(f"Removed block: {get_short_id(task['id'])} no longer blocks {get_short_id(blocked_task['id'])}")
+            else:
+                print(f"Warning: Task '{block_id_prefix}' not found. Ignoring.", file=sys.stderr)
+
+    # Remove blocked_by (tasks that block this task)
+    if hasattr(args, 'remove_blocked_by') and args.remove_blocked_by:
+        blocker_ids = [bid.strip() for bid in args.remove_blocked_by.split(',')]
+
+        for blocker_id_prefix in blocker_ids:
+            blocker_task = next((t for t in tasks if t['id'].startswith(blocker_id_prefix)), None)
+            if blocker_task:
+                # Remove from current task's blocked_by list
+                if 'blocked_by' in task and blocker_task['id'] in task['blocked_by']:
+                    task['blocked_by'].remove(blocker_task['id'])
+                    # If this was the only blocker, unblock the task
+                    if not task['blocked_by'] and task['status'] == 'blocked':
+                        task['status'] = 'open'
+                        print(f"Task {get_short_id(task['id'])} is now unblocked.")
+
+                # Remove from blocker task's blocks list
+                if 'blocks' in blocker_task and task['id'] in blocker_task['blocks']:
+                    blocker_task['blocks'].remove(task['id'])
+                    blocker_task['updated_at'] = now
+
+                updated = True
+                print(f"Removed blocker: {get_short_id(blocker_task['id'])} no longer blocks {get_short_id(task['id'])}")
+            else:
+                print(f"Warning: Blocker task '{blocker_id_prefix}' not found. Ignoring.", file=sys.stderr)
+
     if hasattr(args, 'status') and args.status:
         if args.status not in ['open', 'in_progress', 'done', 'blocked']:
             print(f"Error: Invalid status '{args.status}'.", file=sys.stderr)
@@ -439,6 +492,42 @@ def cmd_show(args):
         print(f"\nNo session logs yet.")
 
     print(f"\n{'='*70}\n")
+
+def cmd_delete(args):
+    """'delete' command: Removes a task from the database."""
+    task, tasks = find_task(args.id)
+    if not task:
+        return
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    task_id = task['id']
+    task_title = task['title']
+
+    # Remove this task from all tasks' dependency lists
+    for other_task in tasks:
+        if other_task['id'] == task_id:
+            continue
+
+        # Remove from blocks lists
+        if 'blocks' in other_task and task_id in other_task['blocks']:
+            other_task['blocks'].remove(task_id)
+            other_task['updated_at'] = now
+
+        # Remove from blocked_by lists
+        if 'blocked_by' in other_task and task_id in other_task['blocked_by']:
+            other_task['blocked_by'].remove(task_id)
+            other_task['updated_at'] = now
+            # If this was the only blocker, unblock the task
+            if not other_task['blocked_by'] and other_task['status'] == 'blocked':
+                other_task['status'] = 'open'
+                print(f"Task {get_short_id(other_task['id'])} is now unblocked.")
+
+    # Remove the task itself from the list
+    tasks = [t for t in tasks if t['id'] != task_id]
+
+    # Save the updated task list
+    db_save_tasks(tasks)
+    print(f"Deleted task {get_short_id(task_id)}: {task_title}")
 
 # --- Web UI Handler ---
 
@@ -641,7 +730,8 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                             `<a onclick="openEditModal('${task.id}')">Edit</a>`,
                             task.status !== 'in_progress' ? `<a href="/api/update?id=${task.id}&status=in_progress">Start</a>` : '',
                             task.status !== 'done' ? `<a href="/api/update?id=${task.id}&status=done">Done</a>` : '',
-                            task.status === 'done' ? `<a href="/api/update?id=${task.id}&status=open">Re-open</a>` : ''
+                            task.status === 'done' ? `<a href="/api/update?id=${task.id}&status=open">Re-open</a>` : '',
+                            `<a onclick="deleteTask('${task.id}', '${escapeHtml(task.title).replace(/'/g, '\\\'')}')" style="color: #ff4d4f;">Delete</a>`
                         ].filter(a => a).join(' ');
 
                         list.innerHTML += `
@@ -729,6 +819,31 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                         }
                     } catch (error) {
                         alert('Error deleting session log: ' + error.message);
+                    }
+                }
+
+                async function deleteTask(taskId, taskTitle) {
+                    if (!confirm(`Are you sure you want to delete task "${taskTitle}"?\n\nThis will also remove all dependency relationships with other tasks.`)) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/delete', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: `id=${encodeURIComponent(taskId)}`
+                        });
+
+                        if (response.ok || response.redirected) {
+                            // Redirect to home or reload tasks
+                            window.location.href = '/';
+                        } else {
+                            alert('Failed to delete task');
+                        }
+                    } catch (error) {
+                        alert('Error deleting task: ' + error.message);
                     }
                 }
 
@@ -906,6 +1021,28 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_response(json.dumps({"error": str(e)}), content_type="application/json", status=500)
 
+        elif url.path == '/api/delete':
+            # Delete a task
+            task_id = get_param('id')
+
+            if not task_id:
+                self._send_response(json.dumps({"error": "Missing 'id'"}), content_type="application/json", status=400)
+                return
+
+            # Create FakeArgs for cmd_delete
+            class DeleteArgs:
+                def __init__(self):
+                    self.id = task_id
+
+            try:
+                cmd_delete(DeleteArgs())
+                # Redirect back to the main page
+                self.send_response(302)
+                self.send_header('Location', '/')
+                self.end_headers()
+            except Exception as e:
+                self._send_response(json.dumps({"error": str(e)}), content_type="application/json", status=500)
+
         else:
             self._send_response("Not Found", status=404)
 
@@ -968,12 +1105,19 @@ def main():
     parser_update.add_argument("--delete-log", type=int, metavar="INDEX", help="Delete a session log by index (0-based).")
     parser_update.add_argument("--add-blocks", type=str, help="Add task IDs that this task blocks (comma-separated).")
     parser_update.add_argument("--add-blocked-by", type=str, help="Add task IDs that block this task (comma-separated).")
+    parser_update.add_argument("--remove-blocks", type=str, help="Remove task IDs that this task blocks (comma-separated).")
+    parser_update.add_argument("--remove-blocked-by", type=str, help="Remove task IDs that block this task (comma-separated).")
     parser_update.set_defaults(func=cmd_update)
 
     # 'show' command
     parser_show = subparsers.add_parser("show", help="Show detailed information about a task.")
     parser_show.add_argument("id", type=str, help="The ID (or prefix) of the task to show.")
     parser_show.set_defaults(func=cmd_show)
+
+    # 'delete' command
+    parser_delete = subparsers.add_parser("delete", help="Delete a task.")
+    parser_delete.add_argument("id", type=str, help="The ID (or prefix) of the task to delete.")
+    parser_delete.set_defaults(func=cmd_delete)
 
     # 'web' command
     parser_web = subparsers.add_parser("web", help="Start the web UI server.")

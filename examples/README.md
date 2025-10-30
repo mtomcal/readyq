@@ -61,7 +61,7 @@ Demonstrates how an AI agent might use readyq:
 ./readyq.py new "Task 3" --blocked-by <task1-id>
 
 # Launch web interface
-./readyq.py --web
+./readyq.py web
 ```
 
 Then test in the browser:

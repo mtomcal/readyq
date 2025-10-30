@@ -120,8 +120,19 @@ This creates a `.readyq.jsonl` file in the current directory.
 ./readyq.py update c4a0b12d --add-blocks e5f1a234
 ./readyq.py update c4a0b12d --add-blocked-by a1b2c3d4
 
+# Remove dependencies from existing tasks
+./readyq.py update c4a0b12d --remove-blocks e5f1a234
+./readyq.py update c4a0b12d --remove-blocked-by a1b2c3d4
+
 # Delete a session log by index (0-based)
 ./readyq.py update c4a0b12d --delete-log 0
+```
+
+### Delete Tasks
+
+```bash
+# Delete a task (also removes all dependency relationships)
+./readyq.py delete c4a0b12d
 ```
 
 ### Web Interface
@@ -135,6 +146,7 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 **Web UI Features:**
 - **Create Tasks**: Click "New Task" button to create tasks with title, description, and dependencies
 - **Edit Tasks**: Click "Edit" on any task to modify all fields including title, description, status, and dependencies
+- **Delete Tasks**: Click "Delete" to remove tasks and automatically clean up dependency relationships
 - **Manage Dependencies**: Add blocks and blocked_by relationships through the edit modal
 - **Session Logs**: View existing session logs and delete individual entries
 - **Automatic Updates**: Task list updates after all operations
@@ -159,6 +171,7 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 | `ready` | Show all unblocked tasks |
 | `show <id>` | Show detailed task info with description and session logs |
 | `update <id>` | Update a task's properties |
+| `delete <id>` | Delete a task and clean up all dependency relationships |
 | `web` | Launch web UI |
 
 ### Options
@@ -179,6 +192,8 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 | `--delete-log <index>` | Delete a session log by index (0-based) |
 | `--add-blocks <ids>` | Add task IDs that this task blocks (comma-separated, supports partial matching) |
 | `--add-blocked-by <ids>` | Add task IDs that block this task (comma-separated, supports partial matching) |
+| `--remove-blocks <ids>` | Remove task IDs that this task blocks (comma-separated, supports partial matching) |
+| `--remove-blocked-by <ids>` | Remove task IDs that block this task (comma-separated, supports partial matching) |
 
 ## File Format
 
@@ -319,11 +334,9 @@ For production use with very large task sets (10,000+), consider:
 Contributions welcome! See `CONTRIBUTING.md` for guidelines.
 
 Ideas for contributions:
-- Add `delete` command for removing tasks
 - Create `export` command (CSV, JSON, Markdown)
 - Add `search` and `filter` capabilities
 - Build TUI (text user interface with curses)
-- Add dependency removal (`--remove-blocks`, `--remove-blocked-by`)
 - Implement task templates
 - Add task tags/labels
 

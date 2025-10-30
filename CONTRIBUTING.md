@@ -81,13 +81,21 @@ Before submitting a PR, test:
 ./readyq.py update <id> --status done
 ./readyq.py ready
 
+# Delete command
+./readyq.py delete <id>
+
+# Dependency removal
+./readyq.py update <id> --remove-blocks <id2>
+./readyq.py update <id> --remove-blocked-by <id3>
+
 # Web interface
-./readyq.py --web
-# Test all UI actions in browser
+./readyq.py web
+# Test all UI actions in browser (create, edit, delete)
 
 # Edge cases
 ./readyq.py update nonexistent --status done
 ./readyq.py new "Task" --blocked-by invalid-id
+./readyq.py delete nonexistent
 ```
 
 ### File Structure
@@ -104,30 +112,38 @@ readyq/
 
 ## Feature Ideas
 
+### Completed Features
+
+- [x] Add `delete` command for removing tasks
+- [x] Create `show <id>` for detailed task view
+- [x] Add `--add-blocks` and `--add-blocked-by` to `update` command
+- [x] Add `--remove-blocks` and `--remove-blocked-by` to `update` command
+- [x] Support task descriptions (multi-line)
+- [x] Implement file locking for concurrency
+- [x] Session logging for persistent memory
+- [x] Web UI with create/edit/delete functionality
+
 ### High Priority
 
-- [ ] Add `delete` command for removing tasks
 - [ ] Implement `search` with pattern matching
 - [ ] Add `export` command (JSON, CSV, Markdown)
-- [ ] Create `show <id>` for detailed task view
-- [ ] Add `--add-blocks` to `update` command
+- [ ] Implement `filter` by status, date, or tags
 
 ### Medium Priority
 
-- [ ] Implement `filter` by status, date, or tags
 - [ ] Add task tags/labels support
 - [ ] Create `stats` command for analytics
 - [ ] Add `archive` for completed tasks
-- [ ] Support task descriptions (multi-line)
+- [ ] Bulk operations support
 
 ### Advanced Features
 
 - [ ] Build terminal UI with `curses`
 - [ ] Add git integration (auto-commit)
-- [ ] Implement file locking for concurrency
 - [ ] Create SQLite variant for large datasets
 - [ ] Add export to Gantt chart format
 - [ ] Support multiple memory files
+- [ ] Task templates
 
 ## SQLite Variant
 

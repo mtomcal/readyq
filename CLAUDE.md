@@ -32,6 +32,7 @@ TASK1_ID=$(./readyq.py list | tail -1 | awk '{print $1}')
 # Manually test:
 #   - Create task via "New Task" button
 #   - Edit task via "Edit" link (test all fields)
+#   - Delete task via "Delete" link
 #   - Add/delete session logs
 #   - Start/Done/Re-open buttons
 #   - Dependency graph updates
@@ -57,16 +58,17 @@ rm .readyq.jsonl
 
 ### Single-File Design
 
-The entire application is in `readyq.py` (~1000 lines):
-- Lines 1-36: Imports and configuration
-- Lines 38-98: File locking implementation (cross-platform lock file pattern)
-- Lines 100-137: Database layer (JSONL operations with locking)
-- Lines 139-174: Helper functions
-- Lines 176-266: CLI command handlers (quickstart, new, list, ready, update, show)
-- Lines 267-422: `cmd_update()` with full edit capabilities (title, description, dependencies, session logs)
-- Lines 424-733: Web UI server with modal forms and session log management
-- Lines 735-893: HTTP handlers (GET and POST) with create/edit/delete-log endpoints
-- Lines 895-986: Main CLI argument parser with extended flags
+The entire application is in `readyq.py` (~1100 lines):
+- Lines 1-42: Imports and configuration
+- Lines 44-103: File locking implementation (cross-platform lock file pattern)
+- Lines 105-141: Database layer (JSONL operations with locking)
+- Lines 143-178: Helper functions
+- Lines 180-270: CLI command handlers (quickstart, new, list, ready)
+- Lines 272-453: `cmd_update()` with full edit capabilities (title, description, dependencies, session logs)
+- Lines 455-488: `cmd_show()` and `cmd_delete()` handlers
+- Lines 490-870: Web UI server with modal forms, session log management, and delete functionality
+- Lines 872-1022: HTTP handlers (GET and POST) with create/edit/delete/delete-log endpoints
+- Lines 1024-1085: Main CLI argument parser with extended flags
 
 ### Data Storage Strategy
 
@@ -136,6 +138,7 @@ The web server embeds a single-page HTML app with modal forms (readyq.py:444-733
 - `POST /api/create`: Creates new task with all fields (title, description, blocked_by)
 - `POST /api/edit`: Edits existing task with all fields (title, description, status, dependencies, logs)
 - `POST /api/delete-log`: Deletes session log by index
+- `POST /api/delete`: Deletes task and cleans up all dependency relationships
 
 **FakeArgs Pattern**: The web handlers create `FakeArgs` objects (CreateArgs, EditArgs) to reuse CLI logic. This means stdout/stderr from updates goes to server console, not HTTP response. This pattern maintains code reuse while keeping the single-file constraint.
 
@@ -182,10 +185,11 @@ Uses `socketserver.ThreadingTCPServer` (readyq.py:383) to handle multiple browse
 ### Adding a New CLI Command
 
 1. Create handler function: `def cmd_yourcommand(args):`
-2. Add subparser in `main()` (after line 409)
+2. Add subparser in `main()` (around line 1070)
 3. Set handler: `parser_yourcommand.set_defaults(func=cmd_yourcommand)`
-4. Update README.md CLI Reference table
-5. Test manually
+4. Update docstring at top of readyq.py
+5. Update README.md CLI Reference table
+6. Test manually
 
 ### Modifying Task Schema
 
@@ -223,14 +227,17 @@ Before committing changes:
 - [ ] Test empty database: `rm .readyq.jsonl && ./readyq.py list && ./readyq.py ready`
 - [ ] Test dependency chain: A blocks B blocks C, mark A done, verify B unblocked
 - [ ] Test `--add-blocks` and `--add-blocked-by` flags
+- [ ] Test `--remove-blocks` and `--remove-blocked-by` flags
 - [ ] Test `--title` and `--description` update flags
 - [ ] Test `--delete-log` with valid and invalid indices
 - [ ] Test session log viewing with `./readyq.py show <id>`
+- [ ] Test `delete` command and verify dependency cleanup
 
 **Web UI Tests:**
 - [ ] Test `./readyq.py web` in browser
 - [ ] Test creating tasks via "New Task" button
 - [ ] Test editing all fields via "Edit" button
+- [ ] Test deleting tasks via "Delete" button
 - [ ] Test adding dependencies through edit modal
 - [ ] Test deleting session logs via web UI
 - [ ] Test modal scrolling with long content/many logs
@@ -266,21 +273,22 @@ Before committing changes:
 
 Recent additions:
 - ✅ `show <id>` for detailed task view with session logs
-- ✅ `--add-blocks` and `--add-blocked-by` for dependency editing
+- ✅ `delete <id>` command for removing tasks with automatic dependency cleanup
+- ✅ `--add-blocks` and `--add-blocked-by` for adding dependencies
+- ✅ `--remove-blocks` and `--remove-blocked-by` for removing dependencies
 - ✅ `--title` and `--description` for updating task metadata
 - ✅ `--delete-log` for removing session logs
 - ✅ File locking for concurrency (lock file pattern)
-- ✅ Web UI with create/edit modals
+- ✅ Web UI with create/edit/delete modals
 - ✅ Session log management in web UI
 - ✅ Modal scrolling support
+- ✅ Delete button in web UI with confirmation dialog
 
 ## Planned Features (from CONTRIBUTING.md)
 
 High priority:
-- `delete` command for removing tasks
 - `search` with pattern matching
 - `export` command (JSON, CSV, Markdown)
-- Dependency removal (`--remove-blocks`, `--remove-blocked-by`)
 
 Advanced:
 - Terminal UI with curses
