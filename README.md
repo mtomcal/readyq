@@ -79,7 +79,7 @@ readyq quickstart
 ./readyq.py quickstart
 ```
 
-This creates a `.readyq.jsonl` file in the current directory.
+This creates a `.readyq.jsonl` file in the current directory and displays a comprehensive tutorial guide covering all readyq features, commands, and AI agent best practices. You can re-run `quickstart` anytime to view the tutorial again.
 
 ### Create Tasks
 
@@ -165,7 +165,7 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 
 | Command | Description |
 |---------|-------------|
-| `quickstart` | Initialize `.readyq.jsonl` in current directory |
+| `quickstart` | Initialize database and display comprehensive tutorial for AI agents |
 | `new <title>` | Create a new task |
 | `list` | Show all tasks |
 | `ready` | Show all unblocked tasks |
