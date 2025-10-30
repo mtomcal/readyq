@@ -182,13 +182,144 @@ def print_task_list(tasks):
 # --- CLI Command Handlers ---
 
 def cmd_quickstart(args):
-    """'quickstart' command: Creates the DB file."""
-    if os.path.exists(DB_FILE):
-        print(f"'{DB_FILE}' already exists.")
-    else:
-        # Just create an empty file
+    """'quickstart' command: Initializes the DB and displays tutorial for AI agents."""
+    # Initialize database if it doesn't exist
+    if not os.path.exists(DB_FILE):
         open(DB_FILE, 'w').close()
-        print(f"Initialized empty readyq file at '{DB_FILE}'.")
+        print(f"Initialized empty readyq file at '{DB_FILE}'.\n")
+
+    # Display comprehensive tutorial for AI agents
+    tutorial = """
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     READYQ TASK TRACKING SYSTEM                              ║
+║                      Quickstart Guide for AI Agents                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+OVERVIEW
+────────
+readyq is a CLI-based task management tool for tracking work items and
+dependencies. It helps you organize tasks, manage blockers, and maintain
+persistent context across work sessions.
+
+CORE WORKFLOW
+─────────────
+
+1. CREATING TASKS
+   Add new work items with titles and optional descriptions:
+
+   ./readyq.py new "Set up database schema"
+   ./readyq.py new "Build API endpoints" --description "REST API for user management"
+
+2. MANAGING DEPENDENCIES
+   Link tasks to show blocking relationships (task A must complete before B):
+
+   ./readyq.py new "Write tests" --blocked-by <task-id>
+   ./readyq.py update <task-id> --add-blocked-by <blocker-id>
+   ./readyq.py update <task-id> --add-blocks <dependent-id>
+
+3. FINDING ACTIONABLE WORK
+   See unblocked tasks ready for immediate action:
+
+   ./readyq.py ready
+
+   This shows only tasks with status != 'done' and no active blockers.
+
+4. TRACKING PROGRESS
+   Update status as you work:
+
+   ./readyq.py update <task-id> --status in_progress
+   ./readyq.py update <task-id> --status done
+
+   When a task is marked 'done', all tasks it blocks are automatically unblocked.
+
+5. PERSISTENT MEMORY (AI Agent Feature)
+   Track what you learned or accomplished in each session:
+
+   ./readyq.py update <task-id> --log "Discovered the auth module uses JWT tokens"
+   ./readyq.py show <task-id>  # View full task details with all session logs
+
+COMMON COMMANDS
+───────────────
+
+List all tasks:          ./readyq.py list
+View ready tasks:        ./readyq.py ready
+Show task details:       ./readyq.py show <task-id>
+Update task status:      ./readyq.py update <task-id> --status [open|in_progress|done|blocked]
+Update title/desc:       ./readyq.py update <task-id> --title "New title" --description "New desc"
+Add session log:         ./readyq.py update <task-id> --log "What you learned"
+Delete log entry:        ./readyq.py update <task-id> --delete-log <index>
+Delete task:             ./readyq.py delete <task-id>
+Web interface:           ./readyq.py web
+
+TASK STATUSES
+─────────────
+
+• open          - Ready to start (no active blockers)
+• in_progress   - Currently being worked on
+• blocked       - Waiting on dependencies
+• done          - Completed
+
+PRACTICAL EXAMPLE
+─────────────────
+
+# Start a new project
+./readyq.py quickstart
+
+# Create foundation task
+./readyq.py new "Research codebase architecture"
+TASK1_ID=$(./readyq.py list | tail -1 | awk '{print $1}')
+
+# Create dependent tasks
+./readyq.py new "Design database schema" --blocked-by $TASK1_ID
+TASK2_ID=$(./readyq.py list | tail -1 | awk '{print $1}')
+./readyq.py new "Implement API" --blocked-by $TASK2_ID
+
+# Check what's ready
+./readyq.py ready  # Shows only "Research codebase architecture"
+
+# Work on first task
+./readyq.py update $TASK1_ID --status in_progress
+./readyq.py update $TASK1_ID --log "Found main entry point in server.py"
+./readyq.py update $TASK1_ID --log "Auth system uses custom JWT implementation"
+
+# Complete task (automatically unblocks next task)
+./readyq.py update $TASK1_ID --status done
+
+# Check what's ready now
+./readyq.py ready  # Now shows "Design database schema"
+
+TIPS FOR AI AGENTS
+──────────────────
+
+1. Use --log frequently to maintain context between sessions
+2. Always check './readyq.py ready' before starting new work
+3. Partial task IDs work (e.g., 'c4a0' instead of full UUID)
+4. Mark tasks 'done' when complete to unblock dependent tasks
+5. Use descriptions for detailed task context
+6. View full history with './readyq.py show <task-id>'
+7. The web UI ('./readyq.py web') provides visual task management
+
+DATABASE LOCATION
+─────────────────
+
+Default: ./.readyq.jsonl (in current directory)
+Format:  JSONL (one JSON task per line, git-friendly)
+
+NEXT STEPS
+──────────
+
+1. Run './readyq.py list' to see all tasks
+2. Run './readyq.py ready' to find actionable work
+3. Run './readyq.py web' to explore the visual interface
+
+For detailed help: ./readyq.py --help
+For command help:  ./readyq.py <command> --help
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  TIP: This quickstart guide is always available via './readyq.py quickstart'║
+╚══════════════════════════════════════════════════════════════════════════════╝
+"""
+    print(tutorial)
 
 def cmd_new(args):
     """'new' command: Adds a new task."""
@@ -1077,7 +1208,7 @@ def main():
     # 'quickstart' command
     subparsers.add_parser(
         "quickstart",
-        help="Initialize the .readyq.jsonl file in the current directory."
+        help="Initialize database and display comprehensive tutorial for AI agents."
     ).set_defaults(func=cmd_quickstart)
 
     # 'new' command

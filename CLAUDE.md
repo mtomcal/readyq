@@ -13,8 +13,10 @@ readyq is a single-file, dependency-free task tracking system inspired by Beads 
 ### Testing the CLI
 
 ```bash
+# Display quickstart tutorial for AI agents
+./readyq.py quickstart  # Initializes DB if needed and shows comprehensive guide
+
 # Basic workflow test
-./readyq.py quickstart
 ./readyq.py new "Test task 1"
 TASK1_ID=$(./readyq.py list | tail -1 | awk '{print $1}')
 ./readyq.py new "Test task 2" --blocked-by $TASK1_ID
@@ -63,12 +65,15 @@ The entire application is in `readyq.py` (~1100 lines):
 - Lines 44-103: File locking implementation (cross-platform lock file pattern)
 - Lines 105-141: Database layer (JSONL operations with locking)
 - Lines 143-178: Helper functions
-- Lines 180-270: CLI command handlers (quickstart, new, list, ready)
-- Lines 272-453: `cmd_update()` with full edit capabilities (title, description, dependencies, session logs)
-- Lines 455-488: `cmd_show()` and `cmd_delete()` handlers
-- Lines 490-870: Web UI server with modal forms, session log management, and delete functionality
-- Lines 872-1022: HTTP handlers (GET and POST) with create/edit/delete/delete-log endpoints
-- Lines 1024-1085: Main CLI argument parser with extended flags
+- Lines 184-322: `cmd_quickstart()` - Initializes DB and displays comprehensive tutorial for AI agents
+- Lines 324-366: `cmd_new()` - Create new tasks with dependencies
+- Lines 368-373: `cmd_list()` - List all tasks
+- Lines 375-403: `cmd_ready()` - Show unblocked tasks ready for work
+- Lines 405-587: `cmd_update()` - Full edit capabilities (title, description, dependencies, session logs)
+- Lines 589-625: `cmd_show()` - Detailed task view with all session logs
+- Lines 627-680: `cmd_delete()` - Delete task with dependency cleanup
+- Lines 682-1178: Web UI server with modal forms, session log management, and delete functionality
+- Lines 1180+: Main CLI argument parser with extended flags
 
 ### Data Storage Strategy
 
