@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 
 """
-readyq.py: A dependency-free, JSONL-based task tracker with dependency management.
-Inspired by Beads AI, but built with only the Python standard library.
+readyq.py: A dependency-free, JSONL-based task tracker with dependency management
+and persistent session logging. Built for AI agents and designed to maintain context
+across multiple work sessions.
 
 Usage:
-  ./readyq.py quickstart    - Initialize the .readyq.jsonl file
-  ./readyq.py new "My task" - Add a new task
-  ./readyq.py list          - List all tasks
-  ./readyq.py ready         - List all unblocked, open tasks
-  ./readyq.py update <id> [options] - Update a task
-  ./readyq.py --web         - Run a simple web UI on http://localhost:8000
+  ./readyq.py quickstart                          - Initialize the .readyq.jsonl file
+  ./readyq.py new "My task" [--description "..."] - Add a new task
+  ./readyq.py list                                - List all tasks
+  ./readyq.py ready                               - List all unblocked, open tasks
+  ./readyq.py show <id>                           - Show detailed task info with session logs
+  ./readyq.py update <id> [--status STATUS]       - Update task status
+  ./readyq.py update <id> --log "..."            - Add session log entry
+  ./readyq.py --web                               - Run a simple web UI on http://localhost:8000
 """
 
 import sys
@@ -115,11 +118,13 @@ def cmd_new(args):
     new_task = {
         "id": uuid.uuid4().hex,
         "title": args.title,
+        "description": args.description if args.description else "",
         "status": "open",  # open, in_progress, done, blocked
         "created_at": now,
         "updated_at": now,
         "blocks": [],
-        "blocked_by": []
+        "blocked_by": [],
+        "sessions": []
     }
 
     # This part is complex: if --blocked-by is used, we must
@@ -198,6 +203,17 @@ def cmd_update(args):
     task['updated_at'] = now
     updated = False
 
+    # Add session log if provided
+    if args.log:
+        if 'sessions' not in task:
+            task['sessions'] = []
+        task['sessions'].append({
+            "timestamp": now,
+            "log": args.log
+        })
+        updated = True
+        print(f"Added session log to task {get_short_id(task['id'])}")
+
     if args.status:
         if args.status not in ['open', 'in_progress', 'done', 'blocked']:
             print(f"Error: Invalid status '{args.status}'.", file=sys.stderr)
@@ -229,6 +245,44 @@ def cmd_update(args):
         db_save_tasks(tasks)
     else:
         print("No changes specified.")
+
+def cmd_show(args):
+    """'show' command: Display detailed information about a task."""
+    task, _ = find_task(args.id)
+    if not task:
+        return
+
+    print(f"\n{'='*70}")
+    print(f"Task ID: {task['id']}")
+    print(f"{'='*70}")
+    print(f"Title: {task['title']}")
+    print(f"Status: {task['status']}")
+    if task.get('description'):
+        print(f"\nDescription:\n{task['description']}")
+    print(f"\nCreated: {task['created_at']}")
+    print(f"Updated: {task['updated_at']}")
+
+    # Show dependencies
+    if task.get('blocks'):
+        print(f"\nBlocks: {', '.join([get_short_id(tid) for tid in task['blocks']])}")
+    if task.get('blocked_by'):
+        print(f"Blocked by: {', '.join([get_short_id(tid) for tid in task['blocked_by']])}")
+
+    # Show session logs
+    sessions = task.get('sessions', [])
+    if sessions:
+        print(f"\n{'─'*70}")
+        print(f"Session Logs ({len(sessions)} entries):")
+        print(f"{'─'*70}")
+        for i, session in enumerate(sessions, 1):
+            timestamp = session['timestamp']
+            log = session['log']
+            print(f"\n[{i}] {timestamp}")
+            print(f"{log}")
+    else:
+        print(f"\nNo session logs yet.")
+
+    print(f"\n{'='*70}\n")
 
 # --- Web UI Handler ---
 
@@ -358,12 +412,13 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
             # We are re-using the CLI update logic inside the web server.
             # This is not ideal (e.g., stdout/stderr), but works for "no-dependencies".
             class FakeArgs:
-                def __init__(self, id, status):
+                def __init__(self, id, status, log=None):
                     self.id = id
                     self.status = status
+                    self.log = log
 
             try:
-                cmd_update(FakeArgs(id=task_id, status=status))
+                cmd_update(FakeArgs(id=task_id, status=status, log=None))
                 # Redirect back to the main page
                 self.send_response(302)
                 self.send_header('Location', '/')
@@ -417,6 +472,7 @@ def main():
     # 'new' command
     parser_new = subparsers.add_parser("new", help="Create a new task.")
     parser_new.add_argument("title", type=str, help="The title of the task.")
+    parser_new.add_argument("--description", type=str, help="Detailed description of the task.")
     parser_new.add_argument("--blocked-by", type=str, help="Comma-separated list of task IDs that block this one.")
     parser_new.set_defaults(func=cmd_new)
 
@@ -432,8 +488,14 @@ def main():
     parser_update = subparsers.add_parser("update", help="Update a task.")
     parser_update.add_argument("id", type=str, help="The ID (or prefix) of the task to update.")
     parser_update.add_argument("--status", type=str, choices=['open', 'in_progress', 'done', 'blocked'], help="Set a new status.")
+    parser_update.add_argument("--log", type=str, help="Add a session log entry to the task.")
     # TODO: Add --add-blocks and --add-blocked-by for full graph editing
     parser_update.set_defaults(func=cmd_update)
+
+    # 'show' command
+    parser_show = subparsers.add_parser("show", help="Show detailed information about a task.")
+    parser_show.add_argument("id", type=str, help="The ID (or prefix) of the task to show.")
+    parser_show.set_defaults(func=cmd_show)
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)

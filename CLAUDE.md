@@ -68,13 +68,22 @@ The entire application is in `readyq.py`:
 {
   "id": "hex-uuid",
   "title": "string",
+  "description": "string (detailed task context)",
   "status": "open|in_progress|blocked|done",
   "created_at": "ISO8601-UTC",
   "updated_at": "ISO8601-UTC",
   "blocks": ["task-id-1", "task-id-2"],
-  "blocked_by": ["task-id-3"]
+  "blocked_by": ["task-id-3"],
+  "sessions": [
+    {
+      "timestamp": "ISO8601-UTC",
+      "log": "string (what was learned/done)"
+    }
+  ]
 }
 ```
+
+**New in v0.1**: Added `description` and `sessions` fields for AI agent persistent memory.
 
 **Critical Performance Trade-off**:
 - `db_append_task()`: Fast append (new tasks only)

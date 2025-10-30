@@ -1,15 +1,18 @@
 # readyq
 
-A dependency-free, JSONL-based task tracker with dependency management, inspired by [Beads AI](https://github.com/beadai/bd). Perfect for AI agents, personal task tracking, and managing complex dependency graphs—all using only Python's standard library.
+A dependency-free, JSONL-based task tracker with dependency management and persistent session logging. Built specifically for AI agents to maintain context across multiple work sessions, track learnings, and manage complex workflows—all using only Python's standard library.
 
 ## Features
 
 - **Zero Dependencies**: Built entirely with Python 3 standard library
-- **Portable**: Single-file CLI tool that works anywhere Python runs
-- **Graph-Based Dependencies**: Track task relationships and blockers
+- **Persistent Memory**: Log session context and learnings to each task
+- **Graph-Based Dependencies**: Track task relationships and automatic unblocking
+- **AI-First Design**: Simple CLI perfect for AI agent integration
+- **Session Logging**: Append-only log of what was learned and done per task
+- **Task Descriptions**: Full context and requirements for each task
 - **Git-Friendly**: Human-readable JSONL storage for easy version control
+- **Portable**: Single-file CLI tool that works anywhere Python runs
 - **Web UI**: Built-in web interface for visual task management
-- **AI-Friendly**: Simple CLI perfect for AI agent integration
 
 ## Quick Start
 
@@ -20,15 +23,21 @@ chmod +x readyq.py
 # Initialize
 ./readyq.py quickstart
 
-# Create tasks
-./readyq.py new "Design the database schema"
-./readyq.py new "Implement the API"
-./readyq.py new "Write documentation" --blocked-by <task-id>
+# Create tasks with descriptions
+./readyq.py new "Implement authentication" --description "Add JWT-based auth to API endpoints"
+./readyq.py new "Write API tests" --blocked-by <task-id>
 
 # View ready tasks
 ./readyq.py ready
 
-# Update task status
+# Start working and log progress
+./readyq.py update <task-id> --status in_progress --log "Started research on JWT libraries"
+./readyq.py update <task-id> --log "Implemented middleware, added tests"
+
+# View task details and session history
+./readyq.py show <task-id>
+
+# Mark complete
 ./readyq.py update <task-id> --status done
 
 # Launch web UI
@@ -129,6 +138,7 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 | `new <title>` | Create a new task |
 | `list` | Show all tasks |
 | `ready` | Show all unblocked tasks |
+| `show <id>` | Show detailed task info with description and session logs |
 | `update <id>` | Update a task's properties |
 | `--web` | Launch web UI |
 
@@ -136,8 +146,10 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 
 | Option | Command | Description |
 |--------|---------|-------------|
+| `--description <text>` | `new` | Set detailed task description |
 | `--blocked-by <ids>` | `new` | Comma-separated list of blocking task IDs |
 | `--status <status>` | `update` | Set task status (open, in_progress, done, blocked) |
+| `--log <text>` | `update` | Add a session log entry to the task |
 
 ## File Format
 
@@ -146,28 +158,48 @@ Tasks are stored in `.readyq.jsonl` (JSON Lines format). Each line is a complete
 ```json
 {
   "id": "c4a0b12d3e8f9a015e1b2c3f4d5e6789",
-  "title": "Design the database schema",
-  "status": "open",
+  "title": "Implement authentication",
+  "description": "Add JWT-based authentication to API endpoints",
+  "status": "in_progress",
   "created_at": "2025-10-30T15:30:00.000000+00:00",
-  "updated_at": "2025-10-30T15:30:00.000000+00:00",
+  "updated_at": "2025-10-30T16:45:00.000000+00:00",
   "blocks": ["5e1b2c3f4d5e6789c4a0b12d3e8f9a01"],
-  "blocked_by": []
+  "blocked_by": [],
+  "sessions": [
+    {
+      "timestamp": "2025-10-30T15:30:00.000000+00:00",
+      "log": "Started research on JWT libraries. PyJWT looks good."
+    },
+    {
+      "timestamp": "2025-10-30T16:45:00.000000+00:00",
+      "log": "Implemented basic middleware. Added tests. Need refresh token logic next."
+    }
+  ]
 }
 ```
 
 ## Use Cases
 
 ### For AI Agents
+
+Perfect for maintaining context across sessions:
+
 ```bash
-# Agent creates tasks
-readyq new "Analyze codebase"
-readyq new "Generate documentation" --blocked-by <analyze-id>
+# Session 1: Agent starts work
+readyq new "Refactor authentication module" --description "Migrate from session-based to JWT. Maintain backwards compatibility."
+readyq update <id> --status in_progress --log "Analyzed current auth flow. Found 3 endpoints using sessions."
 
-# Agent queries ready work
-readyq ready
+# Session 2: Agent resumes (context preserved in logs)
+readyq show <id>  # Reviews previous session's findings
+readyq update <id> --log "Implemented JWT middleware. Migrated login endpoint. 2 endpoints remaining."
 
-# Agent marks work complete
+# Session 3: Complete work
+readyq update <id> --log "Migrated all endpoints. Added tests. All passing."
 readyq update <id> --status done
+
+# Create dependent tasks
+readyq new "Update API documentation" --blocked-by <id>
+readyq ready  # Shows newly unblocked task
 ```
 
 ### For Personal Workflows
