@@ -10,6 +10,7 @@ A dependency-free, JSONL-based task tracker with dependency management and persi
 - **AI-First Design**: Simple CLI perfect for AI agent integration
 - **Session Logging**: Append-only log of what was learned and done per task
 - **Task Descriptions**: Full context and requirements for each task
+- **Concurrent Access**: File locking prevents race conditions with multiple processes
 - **Git-Friendly**: Human-readable JSONL storage for easy version control
 - **Portable**: Single-file CLI tool that works anywhere Python runs
 - **Web UI**: Built-in web interface for visual task management
@@ -41,7 +42,7 @@ chmod +x readyq.py
 ./readyq.py update <task-id> --status done
 
 # Launch web UI
-./readyq.py --web
+./readyq.py web
 ```
 
 ## Installation
@@ -111,15 +112,33 @@ This creates a `.readyq.jsonl` file in the current directory.
 
 # Reopen a completed task
 ./readyq.py update c4a0b12d --status open
+
+# Update task title or description
+./readyq.py update c4a0b12d --title "New title" --description "Updated description"
+
+# Add dependencies to existing tasks
+./readyq.py update c4a0b12d --add-blocks e5f1a234
+./readyq.py update c4a0b12d --add-blocked-by a1b2c3d4
+
+# Delete a session log by index (0-based)
+./readyq.py update c4a0b12d --delete-log 0
 ```
 
 ### Web Interface
 
 ```bash
-./readyq.py --web
+./readyq.py web
 ```
 
 Launches a web server at `http://localhost:8000` with a clean, modern interface for managing tasks.
+
+**Web UI Features:**
+- **Create Tasks**: Click "New Task" button to create tasks with title, description, and dependencies
+- **Edit Tasks**: Click "Edit" on any task to modify all fields including title, description, status, and dependencies
+- **Manage Dependencies**: Add blocks and blocked_by relationships through the edit modal
+- **Session Logs**: View existing session logs and delete individual entries
+- **Automatic Updates**: Task list updates after all operations
+- **Scrollable Modals**: Forms scroll properly when content is long
 
 ## Task States
 
@@ -140,16 +159,26 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 | `ready` | Show all unblocked tasks |
 | `show <id>` | Show detailed task info with description and session logs |
 | `update <id>` | Update a task's properties |
-| `--web` | Launch web UI |
+| `web` | Launch web UI |
 
 ### Options
 
-| Option | Command | Description |
-|--------|---------|-------------|
-| `--description <text>` | `new` | Set detailed task description |
-| `--blocked-by <ids>` | `new` | Comma-separated list of blocking task IDs |
-| `--status <status>` | `update` | Set task status (open, in_progress, done, blocked) |
-| `--log <text>` | `update` | Add a session log entry to the task |
+#### `new` Command Options
+| Option | Description |
+|--------|-------------|
+| `--description <text>` | Set detailed task description |
+| `--blocked-by <ids>` | Comma-separated list of blocking task IDs (supports partial ID matching) |
+
+#### `update` Command Options
+| Option | Description |
+|--------|-------------|
+| `--title <text>` | Update the task title |
+| `--description <text>` | Update the task description |
+| `--status <status>` | Set task status (open, in_progress, done, blocked) |
+| `--log <text>` | Add a session log entry to the task |
+| `--delete-log <index>` | Delete a session log by index (0-based) |
+| `--add-blocks <ids>` | Add task IDs that this task blocks (comma-separated, supports partial matching) |
+| `--add-blocked-by <ids>` | Add task IDs that block this task (comma-separated, supports partial matching) |
 
 ## File Format
 
@@ -253,11 +282,16 @@ For larger workloads (thousands of tasks), consider the SQLite variant (see `CON
 
 ### Concurrency
 
-This tool uses file-based storage without locking. For concurrent use:
+File locking is implemented using a cross-platform lock file pattern:
 
-- **Single User**: No issues
-- **Multiple Processes**: Risk of write conflicts
-- **Solution**: Use git for merging changes (like Beads AI)
+- **Lock File**: `.readyq.jsonl.lock` created during write operations
+- **Atomic Lock Creation**: Uses `os.open()` with `O_CREAT | O_EXCL` flags
+- **Queue Behavior**: Operations wait up to 5 seconds for lock with 50ms retry interval
+- **Stale Lock Recovery**: Locks older than 10 seconds are automatically cleaned up
+- **Multiple Processes**: Safe for concurrent access by multiple AI agents or users
+- **Lock Hold Time**: Typically <100ms for databases with <1000 tasks
+
+This makes readyq safe for workflows where multiple AI agents or processes need to coordinate task management.
 
 ## Comparison to Beads AI
 
@@ -272,25 +306,26 @@ This tool uses file-based storage without locking. For concurrent use:
 
 ## Limitations
 
-1. **Concurrency**: No file locking—concurrent writes may conflict
-2. **Scale**: Updates rewrite entire file—not ideal for 10,000+ tasks
-3. **Features**: Subset of Beads AI functionality
+1. **Scale**: Updates rewrite entire file—not ideal for 10,000+ tasks
+2. **Features**: Subset of Beads AI functionality
+3. **Lock Timeout**: Operations may timeout (5s) if another process holds lock
 
-For production use with large teams, consider:
-- Using git for change management
+For production use with very large task sets (10,000+), consider:
 - Upgrading to SQLite variant (see `CONTRIBUTING.md`)
-- Using Beads AI directly
+- Using Beads AI for enterprise-scale requirements
 
 ## Contributing
 
 Contributions welcome! See `CONTRIBUTING.md` for guidelines.
 
 Ideas for contributions:
-- Add `delete` command
-- Implement `--add-blocks` for manual dependency editing
-- Create `export` command (CSV, JSON, etc.)
+- Add `delete` command for removing tasks
+- Create `export` command (CSV, JSON, Markdown)
 - Add `search` and `filter` capabilities
-- Build TUI (text user interface)
+- Build TUI (text user interface with curses)
+- Add dependency removal (`--remove-blocks`, `--remove-blocked-by`)
+- Implement task templates
+- Add task tags/labels
 
 ## License
 

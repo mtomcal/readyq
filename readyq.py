@@ -6,14 +6,18 @@ and persistent session logging. Built for AI agents and designed to maintain con
 across multiple work sessions.
 
 Usage:
-  ./readyq.py quickstart                          - Initialize the .readyq.jsonl file
-  ./readyq.py new "My task" [--description "..."] - Add a new task
-  ./readyq.py list                                - List all tasks
-  ./readyq.py ready                               - List all unblocked, open tasks
-  ./readyq.py show <id>                           - Show detailed task info with session logs
-  ./readyq.py update <id> [--status STATUS]       - Update task status
-  ./readyq.py update <id> --log "..."            - Add session log entry
-  ./readyq.py web                                 - Run a simple web UI on http://localhost:8000
+  ./readyq.py quickstart                              - Initialize the .readyq.jsonl file
+  ./readyq.py new "My task" [--description "..."]     - Add a new task
+  ./readyq.py list                                    - List all tasks
+  ./readyq.py ready                                   - List all unblocked, open tasks
+  ./readyq.py show <id>                               - Show detailed task info with session logs
+  ./readyq.py update <id> [--status STATUS]           - Update task status
+  ./readyq.py update <id> --log "..."                 - Add session log entry
+  ./readyq.py update <id> --delete-log <index>        - Delete a session log by index
+  ./readyq.py update <id> --title "..." --description "..." - Update task metadata
+  ./readyq.py update <id> --add-blocks <ids>          - Add tasks this task blocks
+  ./readyq.py update <id> --add-blocked-by <ids>      - Add tasks that block this task
+  ./readyq.py web                                     - Run web UI on http://localhost:8000
 """
 
 import sys
