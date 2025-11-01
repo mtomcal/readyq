@@ -145,6 +145,132 @@ readyq/
 - [ ] Support multiple memory files
 - [ ] Task templates
 
+## File Locking Patterns
+
+readyq uses a lock file pattern for cross-platform file locking. Here are the locking patterns evaluated during development:
+
+### Pattern 1: fcntl-based locking (Unix/Linux/Mac only)
+```python
+import fcntl
+import os
+
+@contextmanager
+def fcntl_lock(file_path, timeout=5.0):
+    """Advisory file locking using fcntl.flock()"""
+    lock_file = open(file_path, 'a')
+    start_time = time.time()
+
+    try:
+        while True:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (OSError, IOError) as e:
+                if e.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                if time.time() - start_time >= timeout:
+                    raise TimeoutError(f"Lock timeout after {timeout}s")
+                time.sleep(0.05)
+
+        yield lock_file
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
+```
+
+**Pros**: Simple, built into OS, automatic cleanup on process death
+**Cons**: Unix-only, not portable to Windows
+
+### Pattern 2: Lock file pattern (cross-platform) ✅ CHOSEN
+```python
+@contextmanager
+def lockfile_lock(base_path, timeout=5.0):
+    """Use separate .lock file with atomic creation (O_CREAT | O_EXCL)"""
+    lock_path = base_path + '.lock'
+    start_time = time.time()
+    lock_acquired = False
+
+    try:
+        while True:
+            try:
+                # Atomic lock file creation
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+                os.write(fd, f"{os.getpid()}\n".encode())  # PID for debugging
+                os.close(fd)
+                lock_acquired = True
+                break
+            except FileExistsError:
+                # Check for stale locks
+                if time.time() - start_time >= timeout:
+                    try:
+                        lock_age = time.time() - os.path.getmtime(lock_path)
+                        if lock_age > timeout * 2:
+                            os.remove(lock_path)  # Remove stale lock
+                            continue
+                    except (OSError, FileNotFoundError):
+                        pass
+                    raise TimeoutError(f"Lock timeout after {timeout}s")
+                time.sleep(0.05)
+
+        yield
+    finally:
+        if lock_acquired:
+            try:
+                os.remove(lock_path)
+            except (OSError, FileNotFoundError):
+                pass
+```
+
+**Pros**: Cross-platform (Windows/Unix/Mac), explicit PID tracking, stale lock detection
+**Cons**: Requires manual cleanup, potential for stale locks
+**Why chosen**: Best balance of portability and simplicity for readyq's use case
+
+### Pattern 3: Atomic append (no lock needed)
+```python
+def atomic_append(file_path, content):
+    """Single write() calls are atomic on most filesystems (<4KB)"""
+    with open(file_path, 'a', encoding='utf-8') as f:
+        f.write(content)  # Single write is atomic
+```
+
+**Used for**: `db_append_task()` - fast task creation
+**Trade-off**: Safe for appends, but read-modify-write cycles (like `db_save_tasks()`) need explicit locking
+
+### Pattern 4: Atomic replace (for full rewrites)
+```python
+def atomic_replace(file_path, content):
+    """Atomic file replacement using rename()"""
+    temp_path = file_path + '.tmp'
+
+    with open(temp_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f.fileno())  # Ensure written to disk
+
+    os.replace(temp_path, file_path)  # Atomic on all platforms
+```
+
+**Could be used for**: `db_save_tasks()` combined with locking
+**Trade-off**: More robust but requires temp file management
+
+### Implementation Notes
+
+readyq uses **Pattern 2 (lock file)** for `db_lock()` context manager:
+- Lock file: `.readyq.jsonl.lock`
+- Timeout: 5 seconds (configurable)
+- Retry interval: 50ms
+- Stale lock threshold: 10 seconds (2× timeout)
+- PID stored in lock file for debugging
+
+All operations that modify the database use `db_lock()`:
+```python
+with db_lock(timeout=5.0):
+    # Read-modify-write operations protected here
+    tasks = db_load_tasks()
+    # ... modify tasks ...
+    db_save_tasks(tasks)
+```
+
 ## SQLite Variant
 
 For users with larger datasets (1000+ tasks), an SQLite variant would be more performant:
