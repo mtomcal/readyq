@@ -49,14 +49,14 @@ chmod +x readyq.py
 
 ### Option 1: Direct Download
 ```bash
-curl -O https://raw.githubusercontent.com/yourusername/readyq/main/readyq.py
+curl -O https://raw.githubusercontent.com/mtomcal/readyq/main/readyq.py
 chmod +x readyq.py
 ./readyq.py quickstart
 ```
 
 ### Option 2: Clone Repository
 ```bash
-git clone https://github.com/yourusername/readyq.git
+git clone https://github.com/mtomcal/readyq.git
 cd readyq
 ./readyq.py quickstart
 ```
@@ -350,8 +350,8 @@ Inspired by [Beads AI](https://github.com/beadai/bd) by the Beads team. This pro
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/readyq/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/readyq/discussions)
+- **Issues**: [GitHub Issues](https://github.com/mtomcal/readyq/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/mtomcal/readyq/discussions)
 
 ---
 
