@@ -167,6 +167,37 @@ def get_short_id(task_id):
     """Returns a shortened 8-char ID for display."""
     return task_id[:8]
 
+def find_available_port(start_port, max_attempts=100):
+    """
+    Find an available port starting from start_port.
+
+    Tries sequential ports (start_port, start_port+1, ...) up to max_attempts.
+    Returns the first available port, or None if all attempts fail.
+
+    Args:
+        start_port: Port number to start searching from
+        max_attempts: Maximum number of ports to try (default: 100)
+
+    Returns:
+        Available port number, or None if no port found
+    """
+    import socket
+
+    for offset in range(max_attempts):
+        port = start_port + offset
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("", port))
+            sock.close()
+            return port
+        except OSError:
+            # Port is in use, try next one
+            sock.close()
+            continue
+
+    # No available port found
+    return None
+
 def print_task_list(tasks):
     """Helper to pretty-print a list of tasks."""
     if not tasks:
@@ -2207,10 +2238,19 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
 def cmd_web(args):
     """'web' command: Starts the web server."""
 
+    # Find an available port starting from the default PORT
+    port = find_available_port(PORT, max_attempts=100)
+    if port is None:
+        print(f"Error: Could not find an available port in range {PORT}-{PORT+99}", file=sys.stderr)
+        sys.exit(1)
+
+    if port != PORT:
+        print(f"Note: Port {PORT} is in use, using port {port} instead")
+
     Handler = WebUIHandler
     # Use ThreadingTCPServer to handle concurrent requests
-    with socketserver.ThreadingTCPServer(("", PORT), Handler) as httpd:
-        url = f"http://{HOST}:{PORT}"
+    with socketserver.ThreadingTCPServer(("", port), Handler) as httpd:
+        url = f"http://{HOST}:{port}"
         print(f"Serving web UI at {url}")
         print("Press Ctrl+C to stop.")
 

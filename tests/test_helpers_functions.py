@@ -174,3 +174,97 @@ class TestPrintTaskList(TempReadyQTest):
             self.assertIn("No", output)   # For unblocked task
         finally:
             sys.stdout = old_stdout
+
+
+class TestFindAvailablePort(TempReadyQTest):
+    """Test find_available_port() function."""
+
+    def test_find_available_port_when_free(self):
+        """Test finding port when starting port is free."""
+        import socket
+
+        # Find a port that's actually free in the 9000 range for testing
+        start_port = 9000
+        port = readyq.find_available_port(start_port, max_attempts=10)
+
+        self.assertIsNotNone(port)
+        self.assertGreaterEqual(port, start_port)
+        self.assertLess(port, start_port + 10)
+
+        # Verify the port is actually usable
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("", port))
+        finally:
+            sock.close()
+
+    def test_find_available_port_when_occupied(self):
+        """Test finding next available port when starting port is occupied."""
+        import socket
+
+        # Bind to a port to make it unavailable
+        start_port = 9100
+        sock1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock1.bind(("", start_port))
+        sock1.listen(1)
+
+        try:
+            # Should find next available port
+            port = readyq.find_available_port(start_port, max_attempts=10)
+            self.assertIsNotNone(port)
+            self.assertEqual(port, start_port + 1)
+
+            # Verify the returned port is actually usable
+            sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                sock2.bind(("", port))
+            finally:
+                sock2.close()
+        finally:
+            sock1.close()
+
+    def test_find_available_port_multiple_occupied(self):
+        """Test finding port when multiple ports are occupied."""
+        import socket
+
+        start_port = 9200
+        sockets = []
+
+        try:
+            # Occupy first 3 ports
+            for i in range(3):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.bind(("", start_port + i))
+                sock.listen(1)
+                sockets.append(sock)
+
+            # Should find the 4th port
+            port = readyq.find_available_port(start_port, max_attempts=10)
+            self.assertIsNotNone(port)
+            self.assertEqual(port, start_port + 3)
+        finally:
+            for sock in sockets:
+                sock.close()
+
+    def test_find_available_port_all_occupied(self):
+        """Test when all ports in range are occupied."""
+        import socket
+
+        start_port = 9300
+        max_attempts = 5
+        sockets = []
+
+        try:
+            # Occupy all ports in range
+            for i in range(max_attempts):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.bind(("", start_port + i))
+                sock.listen(1)
+                sockets.append(sock)
+
+            # Should return None when all ports are occupied
+            port = readyq.find_available_port(start_port, max_attempts=max_attempts)
+            self.assertIsNone(port)
+        finally:
+            for sock in sockets:
+                sock.close()
