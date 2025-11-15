@@ -764,6 +764,96 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                     --transition: all 0.15s ease;
                 }
 
+                /* Theme: Default (Light Blue) */
+                .theme-default {
+                    --color-bg-primary: #fafbfc;
+                    --color-bg-secondary: #ffffff;
+                    --color-bg-tertiary: #f6f8fa;
+                    --color-text-primary: #1f2937;
+                    --color-text-secondary: #6b7280;
+                    --color-text-tertiary: #9ca3af;
+                    --color-border: #e5e7eb;
+                    --color-border-hover: #d1d5db;
+                    --color-brand: #6366f1;
+                    --color-brand-hover: #4f46e5;
+                    --color-brand-light: #eef2ff;
+                }
+
+                /* Theme: Ocean (Deep Blue/Teal - Dark) */
+                .theme-ocean {
+                    --color-bg-primary: #0f172a;
+                    --color-bg-secondary: #1e293b;
+                    --color-bg-tertiary: #334155;
+                    --color-text-primary: #f1f5f9;
+                    --color-text-secondary: #cbd5e1;
+                    --color-text-tertiary: #94a3b8;
+                    --color-border: #475569;
+                    --color-border-hover: #64748b;
+                    --color-brand: #06b6d4;
+                    --color-brand-hover: #0891b2;
+                    --color-brand-light: #164e63;
+                }
+
+                /* Theme: Forest (Green/Olive - Dark) */
+                .theme-forest {
+                    --color-bg-primary: #14532d;
+                    --color-bg-secondary: #166534;
+                    --color-bg-tertiary: #15803d;
+                    --color-text-primary: #f0fdf4;
+                    --color-text-secondary: #dcfce7;
+                    --color-text-tertiary: #bbf7d0;
+                    --color-border: #22c55e;
+                    --color-border-hover: #4ade80;
+                    --color-brand: #84cc16;
+                    --color-brand-hover: #a3e635;
+                    --color-brand-light: #365314;
+                }
+
+                /* Theme: Sunset (Orange/Red - Warm) */
+                .theme-sunset {
+                    --color-bg-primary: #7f1d1d;
+                    --color-bg-secondary: #991b1b;
+                    --color-bg-tertiary: #b91c1c;
+                    --color-text-primary: #fef2f2;
+                    --color-text-secondary: #fecaca;
+                    --color-text-tertiary: #fca5a5;
+                    --color-border: #f87171;
+                    --color-border-hover: #fb923c;
+                    --color-brand: #f59e0b;
+                    --color-brand-hover: #fbbf24;
+                    --color-brand-light: #78350f;
+                }
+
+                /* Theme: Purple (Purple/Lavender - Dark) */
+                .theme-purple {
+                    --color-bg-primary: #2e1065;
+                    --color-bg-secondary: #4c1d95;
+                    --color-bg-tertiary: #5b21b6;
+                    --color-text-primary: #faf5ff;
+                    --color-text-secondary: #e9d5ff;
+                    --color-text-tertiary: #d8b4fe;
+                    --color-border: #a78bfa;
+                    --color-border-hover: #c084fc;
+                    --color-brand: #d946ef;
+                    --color-brand-hover: #e879f9;
+                    --color-brand-light: #581c87;
+                }
+
+                /* Theme: Amber (Amber/Brown - Warm) */
+                .theme-amber {
+                    --color-bg-primary: #451a03;
+                    --color-bg-secondary: #78350f;
+                    --color-bg-tertiary: #92400e;
+                    --color-text-primary: #fffbeb;
+                    --color-text-secondary: #fef3c7;
+                    --color-text-tertiary: #fde68a;
+                    --color-border: #fbbf24;
+                    --color-border-hover: #fcd34d;
+                    --color-brand: #fb923c;
+                    --color-brand-hover: #fdba74;
+                    --color-brand-light: #713f12;
+                }
+
                 /* Base Styles */
                 * {
                     box-sizing: border-box;
@@ -798,6 +888,61 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                     font-weight: 700;
                     letter-spacing: -0.02em;
                     color: var(--color-text-primary);
+                }
+
+                .header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                }
+
+                .cwd-display {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    padding: 0.5rem 0.875rem;
+                    background: var(--color-bg-tertiary);
+                    border: 1px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Courier New", monospace;
+                    font-size: 0.8125rem;
+                    color: var(--color-text-secondary);
+                    font-weight: 500;
+                }
+
+                .cwd-display::before {
+                    content: "📁";
+                    font-size: 1rem;
+                }
+
+                .header-controls {
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                }
+
+                .theme-selector {
+                    padding: 0.5rem 0.875rem;
+                    background: var(--color-bg-tertiary);
+                    border: 1px solid var(--color-border);
+                    border-radius: var(--radius-md);
+                    font-size: 0.875rem;
+                    color: var(--color-text-primary);
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: var(--transition);
+                    font-family: inherit;
+                }
+
+                .theme-selector:hover {
+                    border-color: var(--color-border-hover);
+                    background: var(--color-bg-secondary);
+                }
+
+                .theme-selector:focus {
+                    outline: none;
+                    border-color: var(--color-brand);
+                    box-shadow: 0 0 0 3px var(--color-brand-light);
                 }
 
                 /* Main Layout */
@@ -1394,8 +1539,21 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
         </head>
         <body>
             <header>
-                <span>readyq Tasks</span>
-                <button class="new-task-btn" onclick="openCreateModal()">+ New Task</button>
+                <div class="header-left">
+                    <span>readyq Tasks</span>
+                    <div class="cwd-display" id="cwd-display">Loading...</div>
+                </div>
+                <div class="header-controls">
+                    <select class="theme-selector" id="theme-selector" onchange="switchTheme(this.value)">
+                        <option value="default">Default</option>
+                        <option value="ocean">Ocean</option>
+                        <option value="forest">Forest</option>
+                        <option value="sunset">Sunset</option>
+                        <option value="purple">Purple</option>
+                        <option value="amber">Amber</option>
+                    </select>
+                    <button class="new-task-btn" onclick="openCreateModal()">+ New Task</button>
+                </div>
             </header>
             <main>
                 <h2>Ready Tasks</h2>
@@ -1509,6 +1667,61 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
 
             <script>
                 let allTasks = [];
+                let cwdValue = null;  // Store current working directory
+                const DEFAULT_CWD = 'readyq';
+
+                // CWD Display
+                async function loadCwd() {
+                    try {
+                        const response = await fetch('/api/cwd');
+                        const data = await response.json();
+                        cwdValue = data.cwd;
+                        const cwdDisplay = document.getElementById('cwd-display');
+                        if (cwdDisplay && data.cwd) {
+                            cwdDisplay.textContent = data.cwd;
+                        }
+                        return cwdValue;
+                    } catch (error) {
+                        console.error('Failed to load CWD:', error);
+                        cwdValue = DEFAULT_CWD;
+                        const cwdDisplay = document.getElementById('cwd-display');
+                        if (cwdDisplay) {
+                            cwdDisplay.textContent = DEFAULT_CWD;
+                        }
+                        return cwdValue;
+                    }
+                }
+
+                // Theme Management
+                const VALID_THEMES = ['default', 'ocean', 'forest', 'sunset', 'purple', 'amber'];
+
+                function sanitizeForStorageKey(value) {
+                    // Allow only alphanumeric, dash, underscore
+                    return value.replace(/[^a-zA-Z0-9_-]/g, '_');
+                }
+
+                function initTheme() {
+                    const storageKey = 'readyq-theme-' + sanitizeForStorageKey(cwdValue || DEFAULT_CWD);
+                    const savedTheme = localStorage.getItem(storageKey) || 'default';
+                    // Validate theme against whitelist
+                    const theme = VALID_THEMES.includes(savedTheme) ? savedTheme : 'default';
+                    document.documentElement.className = 'theme-' + theme;
+                    const themeSelector = document.getElementById('theme-selector');
+                    if (themeSelector) {
+                        themeSelector.value = theme;
+                    }
+                }
+
+                function switchTheme(theme) {
+                    // Validate theme against whitelist
+                    if (!VALID_THEMES.includes(theme)) {
+                        console.warn('Invalid theme:', theme);
+                        theme = 'default';
+                    }
+                    document.documentElement.className = 'theme-' + theme;
+                    const storageKey = 'readyq-theme-' + sanitizeForStorageKey(cwdValue || DEFAULT_CWD);
+                    localStorage.setItem(storageKey, theme);
+                }
 
                 // Autocomplete Input Component
                 class AutocompleteInput {
@@ -2044,7 +2257,16 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                     }
                 }
 
-                document.addEventListener('DOMContentLoaded', loadTasks);
+                document.addEventListener('DOMContentLoaded', async () => {
+                    try {
+                        await loadCwd();
+                    } catch (error) {
+                        console.error('Critical: Failed to load CWD', error);
+                        cwdValue = DEFAULT_CWD; // Ensure fallback
+                    }
+                    initTheme();
+                    loadTasks();
+                });
             </script>
         </body>
         </html>
@@ -2063,6 +2285,18 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_response(json.dumps(tasks), content_type="application/json")
             except Exception as e:
                 self._send_response(json.dumps({"error": str(e)}), content_type="application/json", status=500)
+
+        elif url.path == '/api/cwd':
+            try:
+                cwd = os.path.basename(os.getcwd())
+                self._send_response(json.dumps({"cwd": cwd}), content_type="application/json")
+            except Exception as e:
+                print(f"Error getting CWD: {e}", file=sys.stderr)  # Server-side logging
+                self._send_response(
+                    json.dumps({"error": "Failed to retrieve working directory"}),
+                    content_type="application/json",
+                    status=500
+                )
 
         elif url.path == '/api/update':
             params = parse_qs(url.query)
