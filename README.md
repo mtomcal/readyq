@@ -152,6 +152,33 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 - **Automatic Updates**: Task list updates after all operations
 - **Scrollable Modals**: Forms scroll properly when content is long
 
+**Screenshots** _(click to enlarge)_
+
+<table>
+  <tr>
+    <td width="33%">
+      <a href="docs/img/task-list.png">
+        <img src="docs/img/task-list.png" alt="Task List View" width="100%">
+      </a>
+      <p align="center"><b>Task List View</b></p>
+    </td>
+    <td width="33%">
+      <a href="docs/img/task-detail.png">
+        <img src="docs/img/task-detail.png" alt="Task Detail View" width="100%">
+      </a>
+      <p align="center"><b>Task Detail View</b></p>
+    </td>
+    <td width="33%">
+      <a href="docs/img/themes.png">
+        <img src="docs/img/themes.png" alt="Theme Options" width="100%">
+      </a>
+      <p align="center"><b>Theme Options</b></p>
+    </td>
+  </tr>
+</table>
+
+> **💡 Pro Tip:** The web UI includes theme options (Default, Ocean, Forest, Sunset, Purple, Amber) to help visually distinguish between multiple readyq instances. If you're managing tasks across different git worktrees or project folders, assign each a different theme color—this makes it easy to tell at a glance which project you're viewing when switching between browser tabs.
+
 ## Task States
 
 - **open**: Task is ready to be worked on
