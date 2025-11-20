@@ -1,6 +1,6 @@
 # readyq
 
-A dependency-free, JSONL-based task tracker with dependency management and persistent session logging. Built specifically for AI agents to maintain context across multiple work sessions, track learnings, and manage complex workflows—all using only Python's standard library.
+A dependency-free, markdown-based task tracker with dependency management and persistent session logging. Built specifically for AI agents to maintain context across multiple work sessions, track learnings, and manage complex workflows—all using only Python's standard library.
 
 ## Features
 
@@ -11,7 +11,7 @@ A dependency-free, JSONL-based task tracker with dependency management and persi
 - **Session Logging**: Append-only log of what was learned and done per task
 - **Task Descriptions**: Full context and requirements for each task
 - **Concurrent Access**: File locking prevents race conditions with multiple processes
-- **Git-Friendly**: Human-readable JSONL storage for easy version control
+- **Git-Friendly**: Human-readable markdown storage for easy version control
 - **Portable**: Single-file CLI tool that works anywhere Python runs
 - **Web UI**: Built-in web interface for visual task management
 
@@ -79,7 +79,7 @@ readyq quickstart
 ./readyq.py quickstart
 ```
 
-This creates a `.readyq.jsonl` file in the current directory and displays a comprehensive tutorial guide covering all readyq features, commands, and AI agent best practices. You can re-run `quickstart` anytime to view the tutorial again.
+This creates a `.readyq.md` file in the current directory and displays a comprehensive tutorial guide covering all readyq features, commands, and AI agent best practices. You can re-run `quickstart` anytime to view the tutorial again.
 
 ### Create Tasks
 
@@ -224,30 +224,45 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 
 ## File Format
 
-Tasks are stored in `.readyq.jsonl` (JSON Lines format). Each line is a complete JSON object:
+Tasks are stored in `.readyq.md` (human-readable markdown format). Each task is a separate section:
 
-```json
-{
-  "id": "c4a0b12d3e8f9a015e1b2c3f4d5e6789",
-  "title": "Implement authentication",
-  "description": "Add JWT-based authentication to API endpoints",
-  "status": "in_progress",
-  "created_at": "2025-10-30T15:30:00.000000+00:00",
-  "updated_at": "2025-10-30T16:45:00.000000+00:00",
-  "blocks": ["5e1b2c3f4d5e6789c4a0b12d3e8f9a01"],
-  "blocked_by": [],
-  "sessions": [
-    {
-      "timestamp": "2025-10-30T15:30:00.000000+00:00",
-      "log": "Started research on JWT libraries. PyJWT looks good."
-    },
-    {
-      "timestamp": "2025-10-30T16:45:00.000000+00:00",
-      "log": "Implemented basic middleware. Added tests. Need refresh token logic next."
-    }
-  ]
-}
+```markdown
+# Task: Implement authentication
+
+**ID**: c4a0b12d3e8f9a015e1b2c3f4d5e6789
+**Created**: 2025-10-30T15:30:00.000000+00:00
+**Updated**: 2025-10-30T16:45:00.000000+00:00
+**Blocks**: 5e1b2c3f4d5e6789c4a0b12d3e8f9a01
+**Blocked By**: 
+
+## Status
+
+- [ ] Open
+- [x] In Progress
+- [ ] Blocked
+- [ ] Done
+
+## Description
+
+Add JWT-based authentication to API endpoints
+
+## Session Logs
+
+### 2025-10-30T15:30:00.000000+00:00
+Started research on JWT libraries. PyJWT looks good.
+
+### 2025-10-30T16:45:00.000000+00:00
+Implemented basic middleware. Added tests. Need refresh token logic next.
 ```
+
+### Migration from JSONL
+
+readyq automatically migrates existing `.readyq.jsonl` files to the new markdown format:
+
+- **Auto-detection**: Detects JSONL files and offers migration
+- **Backup Creation**: Creates `.readyq.jsonl.backup` before migration
+- **Seamless Transition**: All existing commands work with both formats
+- **Validation**: Built-in validation ensures data integrity during migration
 
 ## Use Cases
 
@@ -299,26 +314,28 @@ readyq new "Implement backend" --blocked-by <design-id>
 readyq new "Build frontend" --blocked-by <backend-id>
 
 # Commit to version control
-git add .readyq.jsonl
+git add .readyq.md
 git commit -m "Update task graph"
 ```
 
 ## Architecture
 
-### Why JSONL?
+### Why Markdown?
 
 - **Human-Readable**: Easy to inspect and edit with any text editor
-- **Git-Friendly**: Line-based format creates clean diffs
-- **Append-Only**: New tasks are fast (no file rewrite)
+- **Git-Friendly**: Clean diffs with readable task changes
+- **Structured**: Clear separation of metadata, descriptions, and logs
 - **Simple**: No external database required
+- **Validated**: Built-in validation catches data integrity issues
 
 ### Performance Considerations
 
-The JSONL implementation is optimized for simplicity and portability:
+The markdown implementation is optimized for simplicity and portability:
 
 - **Read Operations**: Fast—loads entire file into memory
-- **Append Operations**: Fast—appends single line to file
+- **Append Operations**: Fast—appends new task section to file
 - **Update Operations**: Moderate—rewrites entire file (acceptable for hundreds of tasks)
+- **Validation**: Automatic integrity checking on load
 
 For larger workloads (thousands of tasks), consider the SQLite variant (see `CONTRIBUTING.md`).
 
@@ -326,7 +343,7 @@ For larger workloads (thousands of tasks), consider the SQLite variant (see `CON
 
 File locking is implemented using a cross-platform lock file pattern:
 
-- **Lock File**: `.readyq.jsonl.lock` created during write operations
+- **Lock File**: `.readyq.md.lock` created during write operations
 - **Atomic Lock Creation**: Uses `os.open()` with `O_CREAT | O_EXCL` flags
 - **Queue Behavior**: Operations wait up to 5 seconds for lock with 50ms retry interval
 - **Stale Lock Recovery**: Locks older than 10 seconds are automatically cleaned up
@@ -340,7 +357,7 @@ This makes readyq safe for workflows where multiple AI agents or processes need 
 | Feature | readyq | Beads AI |
 |---------|--------|----------|
 | Dependencies | None (stdlib only) | Requires npm, Node.js |
-| Database | JSONL only | JSONL + SQLite |
+| Database | Markdown (with JSONL migration) | JSONL + SQLite |
 | Language | Python 3 | JavaScript/TypeScript |
 | Web UI | Built-in HTTP server | Separate implementation |
 | Git Integration | Manual | Automatic |
@@ -355,6 +372,16 @@ This makes readyq safe for workflows where multiple AI agents or processes need 
 For production use with very large task sets (10,000+), consider:
 - Upgrading to SQLite variant (see `CONTRIBUTING.md`)
 - Using Beads AI for enterprise-scale requirements
+
+## Database Validation
+
+readyq includes comprehensive validation for markdown databases:
+
+- **Automatic Validation**: Runs validation checks on file load
+- **Error Detection**: Identifies missing fields, invalid IDs, and broken dependencies
+- **Circular Dependency Detection**: Prevents infinite dependency loops
+- **Detailed Reports**: Provides specific fix suggestions for detected issues
+- **Graceful Degradation**: Continues operation with warnings for non-critical issues
 
 ## Contributing
 

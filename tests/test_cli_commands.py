@@ -6,6 +6,7 @@ Tests CLI commands by calling command functions directly.
 
 import sys
 import io
+import os
 from tests.test_helpers import TempReadyQTest
 import readyq
 
@@ -31,7 +32,7 @@ class TestNewCommand(TempReadyQTest):
         readyq.cmd_new(args)
 
         # Verify task was created in database
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]['title'], 'Test task')
         self.assertEqual(tasks[0]['status'], 'open')
@@ -46,7 +47,7 @@ class TestNewCommand(TempReadyQTest):
 
         readyq.cmd_new(args)
 
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]['description'], 'Detailed description')
 
@@ -66,7 +67,7 @@ class TestNewCommand(TempReadyQTest):
         readyq.cmd_new(args)
 
         # Verify dependency was created
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         blocked_task = next(t for t in tasks if t['title'] == 'Blocked task')
         blocker_task = next(t for t in tasks if t['title'] == 'Blocker task')
 
@@ -208,7 +209,7 @@ class TestUpdateCommand(TempReadyQTest):
         readyq.cmd_update(args)
 
         # Verify status changed
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(tasks[0]['status'], 'done')
 
     def test_update_title(self):
@@ -231,7 +232,7 @@ class TestUpdateCommand(TempReadyQTest):
 
         readyq.cmd_update(args)
 
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(tasks[0]['title'], 'New title')
 
     def test_update_add_log(self):
@@ -254,7 +255,7 @@ class TestUpdateCommand(TempReadyQTest):
 
         readyq.cmd_update(args)
 
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(len(tasks[0]['sessions']), 1)
         self.assertEqual(tasks[0]['sessions'][0]['log'], 'Session note')
 
@@ -300,7 +301,7 @@ class TestDeleteCommand(TempReadyQTest):
         readyq.cmd_delete(args)
 
         # Verify task was deleted
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(len(tasks), 0)
 
     def test_delete_cleans_up_dependencies(self):
@@ -319,6 +320,180 @@ class TestDeleteCommand(TempReadyQTest):
         readyq.cmd_delete(args)
 
         # Verify task2's blocked_by is now empty
-        tasks = readyq.db_load_tasks()
+        tasks = readyq.load_tasks()
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]['blocked_by'], [])
+
+
+class TestNewCommandMarkdown(TempReadyQTest):
+    """Test 'new' command with markdown database."""
+
+    def test_new_creates_markdown_format(self):
+        """Test that new command creates markdown format tasks."""
+        # Ensure no existing files
+        self.cleanup_test_files()
+        
+        # Create task via CLI
+        args = FakeArgs(
+            title="Test Task",
+            description="Test Description",
+            blocked_by=None
+        )
+        readyq.cmd_new(args)
+        
+        # Verify markdown file created
+        self.assertTrue(os.path.exists(self.db_path))
+        
+        # Verify it's markdown format
+        with open(self.db_path, 'r') as f:
+            content = f.read()
+        
+        self.assertIn('# Task: Test Task', content)
+        self.assertNotIn('{', content)  # Not JSONL
+
+    def test_new_with_existing_jsonl_migrates(self):
+        """Test that new command triggers migration if JSONL exists."""
+        # Create JSONL file
+        task = self.create_task_dict("Existing Task")
+        jsonl_path = self.db_path.replace('.md', '.jsonl')
+        with open(jsonl_path, 'w') as f:
+            f.write(readyq.json.dumps(task) + '\n')
+        
+        # Create new task
+        args = FakeArgs(
+            title="New Task",
+            description="New Description", 
+            blocked_by=None
+        )
+        readyq.cmd_new(args)
+        
+        # Verify markdown file created and JSONL backed up
+        jsonl_path = self.db_path.replace('.md', '.jsonl')
+        backup_path = jsonl_path + '.backup'
+        
+
+        
+        self.assertTrue(os.path.exists(self.db_path))
+        self.assertTrue(os.path.exists(backup_path))
+        
+        # Verify both tasks exist in markdown
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks), 2)
+        titles = [task['title'] for task in tasks]
+        self.assertIn("Existing Task", titles)
+        self.assertIn("New Task", titles)
+
+
+class TestListCommandMarkdown(TempReadyQTest):
+    """Test 'list' command with markdown database."""
+
+    def test_list_displays_markdown_tasks(self):
+        """Test that list works with markdown format."""
+        # Create tasks in markdown
+        tasks = [
+            self.create_task_dict("Task 1"),
+            self.create_task_dict("Task 2")
+        ]
+        readyq.md_save_tasks(tasks)
+        
+        # Capture list output
+        from io import StringIO
+        import sys
+        
+        captured_output = StringIO()
+        sys.stdout = captured_output
+        
+        args = FakeArgs()
+        readyq.cmd_list(args)
+        
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue()
+        
+        self.assertIn("Task 1", output)
+        self.assertIn("Task 2", output)
+
+
+class TestReadyCommandMarkdown(TempReadyQTest):
+    """Test 'ready' command with markdown database."""
+
+    def test_ready_respects_markdown_dependencies(self):
+        """Test that ready command respects dependency graph."""
+        # Create tasks with dependencies in markdown
+        task1 = self.create_task_dict("Task 1")
+        task2 = self.create_task_dict("Task 2")
+        task2['blocked_by'] = [task1['id']]
+        
+        readyq.md_save_tasks([task1, task2])
+        
+        # Capture ready output
+        from io import StringIO
+        import sys
+        
+        captured_output = StringIO()
+        sys.stdout = captured_output
+        
+        args = FakeArgs()
+        readyq.cmd_ready(args)
+        
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue()
+        
+        # Should only show unblocked task
+        self.assertIn("Task 1", output)
+        self.assertNotIn("Task 2", output)
+
+
+class TestUpdateCommandMarkdown(TempReadyQTest):
+    """Test 'update' command with markdown database."""
+
+    def test_update_modifies_markdown_file(self):
+        """Test that update modifies markdown format."""
+        # Create task in markdown
+        task = self.create_task_dict("Test Task")
+        readyq.md_save_tasks([task])
+        
+        # Update task
+        args = FakeArgs(
+            id=task['id'][:8],
+            status='in_progress',
+            log=None,
+            delete_log=None,
+            title=None,
+            description=None,
+            add_blocks=None,
+            add_blocked_by=None,
+            remove_blocks=None,
+            remove_blocked_by=None
+        )
+        readyq.cmd_update(args)
+        
+        # Verify markdown updated
+        tasks = readyq.md_load_tasks()
+        self.assertEqual(tasks[0]['status'], 'in_progress')
+
+    def test_update_preserves_markdown_formatting(self):
+        """Test that updates preserve markdown in descriptions."""
+        # Create task with markdown description
+        task = self.create_task_dict("Test Task")
+        task['description'] = "**Bold** and *italic* text"
+        readyq.md_save_tasks([task])
+        
+        # Update title
+        args = FakeArgs(
+            id=task['id'][:8],
+            status=None,
+            log=None,
+            delete_log=None,
+            title="Updated Task",
+            description=None,
+            add_blocks=None,
+            add_blocked_by=None,
+            remove_blocks=None,
+            remove_blocked_by=None
+        )
+        readyq.cmd_update(args)
+        
+        # Verify markdown formatting preserved
+        tasks = readyq.md_load_tasks()
+        self.assertEqual(tasks[0]['title'], "Updated Task")
+        self.assertEqual(tasks[0]['description'], "**Bold** and *italic* text")

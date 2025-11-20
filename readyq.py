@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 """
-readyq.py: A dependency-free, JSONL-based task tracker with dependency management
+readyq.py: A dependency-free, markdown-based task tracker with dependency management
 and persistent session logging. Built for AI agents and designed to maintain context
 across multiple work sessions.
 
 Usage:
-  ./readyq.py quickstart                              - Initialize the .readyq.jsonl file
+  ./readyq.py quickstart                              - Initialize the .readyq.md file
   ./readyq.py new "My task" [--description "..."]     - Add a new task
   ./readyq.py list                                    - List all tasks
   ./readyq.py ready                                   - List all unblocked, open tasks
@@ -21,6 +21,14 @@ Usage:
   ./readyq.py update <id> --remove-blocked-by <ids>   - Remove tasks that block this task
   ./readyq.py delete <id>                             - Delete a task and clean up dependencies
   ./readyq.py web                                     - Run web UI on http://localhost:8000
+
+Features:
+  - Human-readable markdown database format (.readyq.md)
+  - Auto-migration from legacy JSONL format (.readyq.jsonl)
+  - Dependency management with automatic unblocking
+  - Session logging for AI agent memory persistence
+  - Web UI for interactive task management
+  - Zero external dependencies (Python 3 stdlib only)
 """
 
 import sys
@@ -34,12 +42,14 @@ import http.server
 import socketserver
 import threading
 import time
+import re
+import shutil
 from contextlib import contextmanager
 from urllib.parse import urlparse, parse_qs
 
 # --- Configuration ---
 
-DB_FILE = ".readyq.jsonl"
+DB_FILE = ".readyq.md"
 HOST = "localhost"
 PORT = 8000
 
@@ -142,6 +152,297 @@ def db_append_task(task):
         with open(DB_FILE, 'a', encoding='utf-8') as f:
             f.write(json.dumps(task) + '\n')
 
+# --- Database Core Functions (Markdown) ---
+
+def md_load_tasks(db_file=None):
+    """Load tasks from markdown file."""
+    if db_file is None:
+        db_file = DB_FILE
+    
+    if not os.path.exists(db_file):
+        return []
+    
+    tasks = []
+    with open(db_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Find all task sections including the title line
+    task_sections = re.finditer(r'# Task: (.*?)\n(.*?)(?=\n---|\n# Task:|$)', content, re.DOTALL)
+    
+    for match in task_sections:
+        title = match.group(1).strip()
+        task_content = match.group(2)
+        task = parse_task_section(task_content)
+        if task:
+            task['title'] = title
+            tasks.append(task)
+    
+    return tasks
+
+def parse_task_section(content):
+    """Parse individual task section into dict."""
+    task = {}
+    
+    # Parse metadata lines line by line for better accuracy
+    for line in content.split('\n'):
+        line = line.strip()
+        if line.startswith('**') and ('**:' in line or line.endswith('**')):
+            # Extract field name and value
+            if '**:' in line:
+                # Format: **Field**: value
+                parts = line.split('**:', 1)
+                field = parts[0].replace('*', '').strip()
+                value = parts[1].strip() if len(parts) > 1 else ''
+            else:
+                # Format: **Field** value (no colon)
+                parts = line.split('**', 2)
+                field = parts[1].strip()
+                value = parts[2].strip() if len(parts) > 2 else ''
+            
+            clean_key = field.lower().replace(' ', '_')
+            # Map field names to expected schema
+            field_mapping = {
+                'created': 'created_at',
+                'updated': 'updated_at',
+                'blocked_by': 'blocked_by',
+                'blocks': 'blocks'
+            }
+            final_key = field_mapping.get(clean_key, clean_key)
+            
+            # Handle comma-separated list fields
+            if clean_key in ['blocks', 'blocked_by']:
+                if value:
+                    # Split by comma and strip whitespace
+                    task[clean_key] = [item.strip() for item in value.split(',') if item.strip()]
+                else:
+                    task[clean_key] = []
+            else:
+                task[final_key] = value
+    
+    # Parse status from checkboxes
+    status_match = re.search(r'- \[x\] ([^\n]+)', content)
+    if status_match:
+        status_text = status_match.group(1).strip()
+        # Map status text to internal values
+        status_mapping = {
+            'Open': 'open',
+            'In Progress': 'in_progress', 
+            'Blocked': 'blocked',
+            'Done': 'done'
+        }
+        task['status'] = status_mapping.get(status_text, 'open')
+    else:
+        task['status'] = 'open'  # Default if no checkbox is checked
+    
+    # Parse description
+    desc_match = re.search(r'## Description\n\n(.*?)(?=\n##|\n---|$)', content, re.DOTALL)
+    if desc_match:
+        task['description'] = desc_match.group(1).strip()
+    
+    # Parse session logs
+    sessions = []
+    log_pattern = r'### (\d{4}-\d{2}-\d{2}T.*?)\n(.*?)(?=\n###|\n---|$)'
+    for match in re.finditer(log_pattern, content, re.DOTALL):
+        timestamp, log_text = match.groups()
+        sessions.append({"timestamp": timestamp, "log": log_text.strip()})
+    
+    if sessions:
+        task['sessions'] = sessions
+    
+    return task
+
+def generate_markdown_task(task):
+    """Generate markdown for a single task."""
+    md = f"# Task: {task['title']}\n\n"
+    
+    # Metadata
+    md += f"**ID**: {task['id']}\n"
+    md += f"**Created**: {task['created_at']}\n"
+    md += f"**Updated**: {task['updated_at']}\n"
+    
+    if task.get('blocks'):
+        md += f"**Blocks**: {', '.join(task['blocks'])}\n"
+    else:
+        md += "**Blocks**: \n"
+    
+    if task.get('blocked_by'):
+        md += f"**Blocked By**: {', '.join(task['blocked_by'])}\n"
+    else:
+        md += "**Blocked By**: \n"
+    
+    # Status
+    md += "\n## Status\n\n"
+    statuses = ['open', 'in_progress', 'blocked', 'done']
+    status_labels = {'open': 'Open', 'in_progress': 'In Progress', 'blocked': 'Blocked', 'done': 'Done'}
+    for status in statuses:
+        checked = '[x]' if task['status'] == status else '[ ]'
+        md += f"- {checked} {status_labels[status]}\n"
+    
+    # Description
+    md += "\n## Description\n\n"
+    md += f"{task.get('description', '')}\n"
+    
+    # Session logs
+    if task.get('sessions'):
+        md += "\n## Session Logs\n\n"
+        for session in task['sessions']:
+            md += f"### {session['timestamp']}\n"
+            md += f"{session['log']}\n\n"
+    
+    return md
+
+def md_save_tasks(tasks, db_file=None):
+    """Save tasks to markdown file."""
+    if db_file is None:
+        db_file = DB_FILE
+    
+    with db_lock():
+        with open(db_file, 'w', encoding='utf-8') as f:
+            for i, task in enumerate(tasks):
+                if i > 0:
+                    f.write('\n---\n\n')
+                f.write(generate_markdown_task(task))
+
+def md_append_task(task, db_file=None):
+    """Append task to markdown file."""
+    if db_file is None:
+        db_file = DB_FILE
+    
+    with db_lock():
+        with open(db_file, 'a', encoding='utf-8') as f:
+            f.write('\n---\n\n')
+            f.write(generate_markdown_task(task))
+
+def auto_migrate_jsonl(db_file=None):
+    """Auto-import JSONL file on startup if markdown doesn't exist."""
+    if db_file is None:
+        jsonl_file = DB_FILE.replace('.md', '.jsonl')
+        md_file = DB_FILE
+    else:
+        jsonl_file = db_file.replace('.md', '.jsonl')
+        md_file = db_file
+    
+    # Check if JSONL exists but markdown doesn't
+    if os.path.exists(jsonl_file) and not os.path.exists(md_file):
+        print(f"🔄 Auto-migrating {jsonl_file} to {md_file}...")
+        
+        # Load from JSONL using existing functions
+        old_db_file = DB_FILE
+        globals()['DB_FILE'] = jsonl_file
+        try:
+            jsonl_tasks = db_load_tasks()
+        finally:
+            globals()['DB_FILE'] = old_db_file
+        
+        # Convert to markdown format
+        md_content = '\n\n---\n\n'.join(generate_markdown_task(task) for task in jsonl_tasks)
+        
+        # Create backup
+        shutil.copy2(jsonl_file, jsonl_file + ".backup")
+        
+        # Write markdown file
+        with open(md_file, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+        
+        # Show conversion summary
+        print(f"✅ Migration complete!")
+        print(f"   📄 Created {md_file}")
+        print(f"   💾 Backup saved as {jsonl_file}.backup")
+        print(f"   📊 Migrated {len(jsonl_tasks)} tasks")
+        print(f"   🔄 Old JSONL file can be deleted manually")
+        
+        return True
+    return False
+
+def detect_database_format(db_file):
+    """Detect if database file is JSONL or markdown."""
+    if not os.path.exists(db_file):
+        return None
+    
+    with open(db_file, 'r') as f:
+        first_line = f.readline().strip()
+        return 'jsonl' if first_line.startswith('{') else 'markdown'
+
+def load_tasks(db_file=None):
+    """Load tasks from database (format-agnostic) with validation."""
+    if db_file is None:
+        db_file = DB_FILE
+    
+    # Auto-migrate if needed
+    auto_migrate_jsonl(db_file)
+    
+    format_type = detect_database_format(db_file)
+    
+    if format_type == 'jsonl':
+        old_db_file = DB_FILE
+        globals()['DB_FILE'] = db_file
+        try:
+            tasks = db_load_tasks()
+        finally:
+            globals()['DB_FILE'] = old_db_file
+    elif format_type == 'markdown':
+        tasks = md_load_tasks(db_file)
+    else:
+        tasks = []
+    
+    # Run validation for markdown files
+    if format_type == 'markdown' and tasks:
+        errors, warnings = validate_markdown_database(tasks, db_file)
+        
+        if errors:
+            print_validation_report(errors, warnings, db_file)
+            print("\n⚠️  Database loaded with errors. Some functionality may not work correctly.")
+            print("🔧 Consider fixing the issues above for optimal performance.")
+        elif warnings:
+            print(f"⚠️  {len(warnings)} warning(s) found in {db_file}")
+            for warning in warnings:
+                print(f"   • {warning}")
+    
+    return tasks
+
+def save_tasks(tasks, db_file=None):
+    """Save tasks to database (format-agnostic)."""
+    if db_file is None:
+        db_file = DB_FILE
+    
+    format_type = detect_database_format(db_file)
+    
+    if format_type == 'jsonl':
+        old_db_file = DB_FILE
+        globals()['DB_FILE'] = db_file
+        try:
+            return db_save_tasks(tasks)
+        finally:
+            globals()['DB_FILE'] = old_db_file
+    elif format_type == 'markdown':
+        return md_save_tasks(tasks, db_file)
+    else:
+        # Default to markdown for new files
+        return md_save_tasks(tasks, db_file)
+
+def append_task(task, db_file=None):
+    """Append task to database (format-agnostic)."""
+    if db_file is None:
+        db_file = DB_FILE
+    
+    # Auto-migrate if needed
+    auto_migrate_jsonl(db_file)
+    
+    format_type = detect_database_format(db_file)
+    
+    if format_type == 'jsonl':
+        old_db_file = DB_FILE
+        globals()['DB_FILE'] = db_file
+        try:
+            return db_append_task(task)
+        finally:
+            globals()['DB_FILE'] = old_db_file
+    elif format_type == 'markdown':
+        return md_append_task(task, db_file)
+    else:
+        # Default to markdown for new files
+        return md_append_task(task, db_file)
+
 # --- Helper Functions ---
 
 def find_task(task_id_prefix):
@@ -149,7 +450,7 @@ def find_task(task_id_prefix):
     if not task_id_prefix:
         return None, []
 
-    tasks = db_load_tasks()
+    tasks = load_tasks()
     matches = [t for t in tasks if t['id'].startswith(task_id_prefix)]
 
     if len(matches) == 1:
@@ -209,6 +510,138 @@ def print_task_list(tasks):
     for task in tasks:
         is_blocked = 'Yes' if task.get('blocked_by') else 'No'
         print(f"{get_short_id(task['id']):<9} {task['status']:<12} {is_blocked:<5} {task['title']:<40}")
+
+# --- Validation System ---
+
+def validate_markdown_database(tasks, db_file):
+    """Comprehensive validation of markdown database file."""
+    errors = []
+    warnings = []
+    
+    # Create task dict, handling tasks without IDs
+    task_dict = {}
+    for task in tasks:
+        if 'id' in task:
+            task_dict[task['id']] = task
+    
+    # Validate each task
+    for task in tasks:
+        task_errors = validate_task(task, task_dict, db_file)
+        errors.extend(task_errors)
+    
+    # Check for duplicate IDs
+    if len(tasks) != len(task_dict):
+        errors.append("Duplicate task IDs found - each task must have unique ID")
+    
+    # Check for circular dependencies
+    circular_deps = find_circular_dependencies(tasks)
+    if circular_deps:
+        errors.append(f"Circular dependency detected: {' → '.join(circular_deps)}")
+    
+    return errors, warnings
+
+def validate_task(task, task_dict, db_file):
+    """Validate individual task structure and content."""
+    errors = []
+    
+    # Check required fields
+    required_fields = ['id', 'created_at', 'updated_at']
+    for field in required_fields:
+        if field not in task or not task[field]:
+            errors.append(f"Task '{task.get('title', 'Unknown')}' missing required field: {field}")
+    
+    # Validate ID format
+    if task.get('id') and not re.match(r'^[a-f0-9]{32}$', task['id']):
+        errors.append(f"Task '{task.get('title', 'Unknown')}' has invalid ID format: {task['id']}")
+    
+    # Validate dependencies
+    for block_id in task.get('blocks', []):
+        if block_id not in task_dict:
+            errors.append(f"Task '{task['title']}' references non-existent task in blocks: {block_id}")
+    
+    for block_id in task.get('blocked_by', []):
+        if block_id not in task_dict:
+            errors.append(f"Task '{task['title']}' references non-existent task in blocked_by: {block_id}")
+    
+    return errors
+
+def find_circular_dependencies(tasks):
+    """Detect circular dependencies in task graph."""
+    def has_cycle(task_id, visited, rec_stack, task_dict, path):
+        visited.add(task_id)
+        rec_stack.add(task_id)
+        path.append(task_id)
+        
+        for blocked_id in task_dict.get(task_id, {}).get('blocked_by', []):
+            if blocked_id not in visited:
+                cycle = has_cycle(blocked_id, visited, rec_stack, task_dict, path)
+                if cycle:
+                    return cycle
+            elif blocked_id in rec_stack:
+                # Return the cycle path
+                cycle_start = path.index(blocked_id)
+                return path[cycle_start:] + [blocked_id]
+        
+        rec_stack.remove(task_id)
+        path.pop()
+        return None
+    
+    # Create task dict, handling tasks without IDs
+    task_dict = {}
+    for task in tasks:
+        if 'id' in task:
+            task_dict[task['id']] = task
+    
+    visited = set()
+    
+    for task_id in task_dict:
+        if task_id not in visited:
+            cycle = has_cycle(task_id, visited, set(), task_dict, [])
+            if cycle:
+                return cycle
+    return None
+
+def print_validation_report(errors, warnings, db_file):
+    """Print comprehensive validation report."""
+    if not errors and not warnings:
+        print(f"✅ {db_file} validation passed - no issues found")
+        return
+    
+    print(f"\n🔍 Validation Report for {db_file}")
+    print("=" * 50)
+    
+    if errors:
+        print(f"\n❌ {len(errors)} Error(s) Found:")
+        print("-" * 30)
+        
+        for i, error in enumerate(errors, 1):
+            print(f"\n{i}. {error}")
+            
+            # Add context-specific fix suggestions
+            if "missing required field" in error:
+                print("   💡 Add the missing field with proper markdown format")
+            elif "invalid ID format" in error:
+                print("   💡 Generate new ID: python3 -c \"import uuid; print(uuid.uuid4().hex)\"")
+            elif "non-existent task" in error:
+                print("   💡 Update dependency to valid task ID or remove it")
+            elif "Circular dependency" in error:
+                print("   💡 Break the cycle by removing one dependency")
+            elif "Duplicate task IDs" in error:
+                print("   💡 Change one task ID to be unique")
+            else:
+                print("   💡 Review and fix the issue above")
+    
+    if warnings:
+        print(f"\n⚠️  {len(warnings)} Warning(s):")
+        print("-" * 30)
+        
+        for i, warning in enumerate(warnings, 1):
+            print(f"\n{i}. {warning}")
+    
+    print(f"\n🔧 To fix these issues:")
+    print("   1. Edit the markdown file directly")
+    print("   2. Use readyq commands to update tasks")
+    print("   3. Tasks with errors may not work correctly")
 
 # --- CLI Command Handlers ---
 
@@ -370,7 +803,7 @@ def cmd_new(args):
     # This part is complex: if --blocked-by is used, we must
     # rewrite the *entire* database to update the other tasks.
     if args.blocked_by:
-        tasks = db_load_tasks()
+        tasks = load_tasks()
         new_task['status'] = 'blocked'
         blocker_ids = [bid.strip() for bid in args.blocked_by.split(',')]
 
@@ -388,24 +821,24 @@ def cmd_new(args):
                 print(f"Warning: Blocker task '{blocker_id_prefix}' not found. Ignoring.", file=sys.stderr)
 
         tasks.append(new_task)
-        db_save_tasks(tasks)
+        save_tasks(tasks)
 
     else:
-        # Simple case: just append the new task
-        db_append_task(new_task)
+        # Simple case: just append new task
+        append_task(new_task)
 
     print(f"Created new task: {get_short_id(new_task['id'])}")
 
 def cmd_list(args):
     """'list' command: Shows all tasks."""
-    tasks = db_load_tasks()
+    tasks = load_tasks()
     # Sort by creation time
     tasks.sort(key=lambda t: t['created_at'])
     print_task_list(tasks)
 
 def cmd_ready(args):
     """'ready' command: Shows unblocked, non-done tasks."""
-    tasks = db_load_tasks()
+    tasks = load_tasks()
 
     # Beads 'ready' means:
     # 1. Status is not 'done'
@@ -613,7 +1046,7 @@ def cmd_update(args):
                         print(f"Task {get_short_id(blocked_task['id'])} is now unblocked.")
 
     if updated:
-        db_save_tasks(tasks)
+        save_tasks(tasks)
     else:
         print("No changes specified.")
 
@@ -688,7 +1121,7 @@ def cmd_delete(args):
     tasks = [t for t in tasks if t['id'] != task_id]
 
     # Save the updated task list
-    db_save_tasks(tasks)
+    save_tasks(tasks)
     print(f"Deleted task {get_short_id(task_id)}: {task_title}")
 
 # --- Web UI Handler ---
@@ -2281,7 +2714,7 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
 
         elif url.path == '/api/tasks':
             try:
-                tasks = db_load_tasks()
+                tasks = load_tasks()
                 self._send_response(json.dumps(tasks), content_type="application/json")
             except Exception as e:
                 self._send_response(json.dumps({"error": str(e)}), content_type="application/json", status=500)
@@ -2435,7 +2868,7 @@ class WebUIHandler(http.server.SimpleHTTPRequestHandler):
                 task['updated_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
                 # Save the updated tasks
-                db_save_tasks(tasks)
+                save_tasks(tasks)
 
                 # Return success
                 self._send_response(json.dumps({"success": True}), content_type="application/json")
@@ -2504,27 +2937,58 @@ def main():
     parser = argparse.ArgumentParser(
         description="readyq: A dependency-aware task tracker using a JSONL file."
     )
+    parser.add_argument(
+        "--db-file", 
+        type=str,
+        help="Alternative database file (default: .readyq.md)",
+        default=".readyq.md"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True, help="Sub-command to run")
 
     # 'quickstart' command
-    subparsers.add_parser(
+    parser_quickstart = subparsers.add_parser(
         "quickstart",
         help="Initialize database and display comprehensive tutorial for AI agents."
-    ).set_defaults(func=cmd_quickstart)
+    )
+    parser_quickstart.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to initialize (default: .readyq.md)",
+        default=".readyq.md"
+    )
+    parser_quickstart.set_defaults(func=cmd_quickstart)
 
     # 'new' command
     parser_new = subparsers.add_parser("new", help="Create a new task.")
     parser_new.add_argument("title", type=str, help="The title of the task.")
     parser_new.add_argument("--description", type=str, help="Detailed description of the task.")
     parser_new.add_argument("--blocked-by", type=str, help="Comma-separated list of task IDs that block this one.")
+    parser_new.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to add task to (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_new.set_defaults(func=cmd_new)
 
     # 'list' command
     parser_list = subparsers.add_parser("list", help="List all tasks.")
+    parser_list.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to list tasks from (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_list.set_defaults(func=cmd_list)
 
     # 'ready' command
     parser_ready = subparsers.add_parser("ready", help="List all tasks that are 'open' and not blocked.")
+    parser_ready.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to check ready tasks from (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_ready.set_defaults(func=cmd_ready)
 
     # 'update' command
@@ -2539,20 +3003,44 @@ def main():
     parser_update.add_argument("--add-blocked-by", type=str, help="Add task IDs that block this task (comma-separated).")
     parser_update.add_argument("--remove-blocks", type=str, help="Remove task IDs that this task blocks (comma-separated).")
     parser_update.add_argument("--remove-blocked-by", type=str, help="Remove task IDs that block this task (comma-separated).")
+    parser_update.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to update task in (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_update.set_defaults(func=cmd_update)
 
     # 'show' command
     parser_show = subparsers.add_parser("show", help="Show detailed information about a task.")
     parser_show.add_argument("id", type=str, help="The ID (or prefix) of the task to show.")
+    parser_show.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to show task from (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_show.set_defaults(func=cmd_show)
 
     # 'delete' command
     parser_delete = subparsers.add_parser("delete", help="Delete a task.")
     parser_delete.add_argument("id", type=str, help="The ID (or prefix) of the task to delete.")
+    parser_delete.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to delete task from (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_delete.set_defaults(func=cmd_delete)
 
     # 'web' command
     parser_web = subparsers.add_parser("web", help="Start the web UI server.")
+    parser_web.add_argument(
+        "--db-file", 
+        type=str,
+        help="Database file to serve via web UI (default: .readyq.md)",
+        default=".readyq.md"
+    )
     parser_web.set_defaults(func=cmd_web)
 
     if len(sys.argv) == 1:
@@ -2560,6 +3048,10 @@ def main():
         sys.exit(1)
 
     args = parser.parse_args()
+    
+    # Set global DB_FILE from command line argument
+    globals()['DB_FILE'] = args.db_file
+    
     args.func(args)
 
 if __name__ == "__main__":
