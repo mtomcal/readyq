@@ -497,3 +497,91 @@ class TestUpdateCommandMarkdown(TempReadyQTest):
         tasks = readyq.md_load_tasks()
         self.assertEqual(tasks[0]['title'], "Updated Task")
         self.assertEqual(tasks[0]['description'], "**Bold** and *italic* text")
+
+
+class TestQuickstartCommand(TempReadyQTest):
+    """Test 'quickstart' command."""
+
+    def test_quickstart_creates_empty_file(self):
+        """Test quickstart creates empty markdown file when no JSONL exists."""
+        # Ensure no database files exist
+        self.assertFalse(os.path.exists(self.db_path))
+        self.assertFalse(os.path.exists(self.db_path.replace('.md', '.jsonl')))
+        
+        args = FakeArgs()
+        readyq.cmd_quickstart(args)
+        
+        # Should create empty markdown file
+        self.assertTrue(os.path.exists(self.db_path))
+        with open(self.db_path, 'r') as f:
+            content = f.read()
+        self.assertEqual(content.strip(), '')
+
+    def test_quickstart_migrates_from_jsonl(self):
+        """Test quickstart migrates existing JSONL file to markdown."""
+        import json
+        
+        # Create test JSONL file with tasks
+        jsonl_file = self.db_path.replace('.md', '.jsonl')
+        test_tasks = [
+            {
+                "id": "test1234567890abcdef1234567890abcdef",
+                "title": "Test task from JSONL",
+                "description": "This task should be migrated",
+                "status": "open",
+                "created_at": "2025-11-23T10:00:00Z",
+                "updated_at": "2025-11-23T10:00:00Z",
+                "blocks": [],
+                "blocked_by": [],
+                "sessions": []
+            }
+        ]
+        
+        with open(jsonl_file, 'w') as f:
+            for task in test_tasks:
+                f.write(json.dumps(task) + '\n')
+        
+        # Ensure markdown file doesn't exist yet
+        self.assertFalse(os.path.exists(self.db_path))
+        
+        args = FakeArgs()
+        readyq.cmd_quickstart(args)
+        
+        # Should create markdown file with migrated tasks
+        self.assertTrue(os.path.exists(self.db_path))
+        self.assertTrue(os.path.exists(jsonl_file + '.backup'))  # Backup should be created
+        
+        # Verify migration worked by loading tasks
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]['title'], 'Test task from JSONL')
+        self.assertEqual(tasks[0]['description'], 'This task should be migrated')
+        
+        # Verify markdown file is not empty
+        with open(self.db_path, 'r') as f:
+            content = f.read()
+        self.assertNotEqual(content.strip(), '')
+        self.assertIn('Test task from JSONL', content)
+
+    def test_quickstart_does_not_overwrite_existing_markdown(self):
+        """Test quickstart doesn't overwrite existing markdown file."""
+        # Create existing markdown file with content
+        with open(self.db_path, 'w') as f:
+            f.write('# Existing content\n')
+        
+        # Create JSONL file too
+        jsonl_file = self.db_path.replace('.md', '.jsonl')
+        with open(jsonl_file, 'w') as f:
+            f.write('{"id": "test", "title": "Should not migrate"}\n')
+        
+        original_content = None
+        with open(self.db_path, 'r') as f:
+            original_content = f.read()
+        
+        args = FakeArgs()
+        readyq.cmd_quickstart(args)
+        
+        # Markdown file should not be changed
+        with open(self.db_path, 'r') as f:
+            current_content = f.read()
+        self.assertEqual(current_content, original_content)

@@ -647,8 +647,15 @@ def print_validation_report(errors, warnings, db_file):
 
 def cmd_quickstart(args):
     """'quickstart' command: Initializes the DB and displays tutorial for AI agents."""
-    # Initialize database if it doesn't exist
-    if not os.path.exists(DB_FILE):
+    # Auto-migrate from JSONL if needed before creating empty file
+    jsonl_file = DB_FILE.replace('.md', '.jsonl')
+    
+    if os.path.exists(jsonl_file) and not os.path.exists(DB_FILE):
+        print(f"🔄 Auto-migrating {jsonl_file} to {DB_FILE}...")
+        auto_migrate_jsonl(DB_FILE)
+        print(f"Migration complete. {DB_FILE} created with existing tasks.\n")
+    elif not os.path.exists(DB_FILE):
+        # Initialize empty database only if no migration happened
         open(DB_FILE, 'w').close()
         print(f"Initialized empty readyq file at '{DB_FILE}'.\n")
 
