@@ -51,6 +51,51 @@ class TestNewCommand(TempReadyQTest):
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0]['description'], 'Detailed description')
 
+    def test_new_task_with_multiline_description(self):
+        """Test creating task with multiline description."""
+        multiline_desc = "Line 1\nLine 2\nLine 3"
+        args = FakeArgs(
+            title='Multiline task',
+            description=multiline_desc,
+            blocked_by=None
+        )
+
+        readyq.cmd_new(args)
+
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]['description'], multiline_desc)
+
+    def test_new_task_with_markdown_headers_in_description(self):
+        """Test creating task with markdown headers in description."""
+        desc_with_headers = "## Section 1\nContent here\n\n### Subsection\nMore content"
+        args = FakeArgs(
+            title='Task with headers',
+            description=desc_with_headers,
+            blocked_by=None
+        )
+
+        readyq.cmd_new(args)
+
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]['description'], desc_with_headers)
+
+    def test_new_task_with_horizontal_rules_in_description(self):
+        """Test creating task with horizontal rules in description."""
+        desc_with_hr = "Before\n---\nAfter"
+        args = FakeArgs(
+            title='Task with HR',
+            description=desc_with_hr,
+            blocked_by=None
+        )
+
+        readyq.cmd_new(args)
+
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]['description'], desc_with_hr)
+
     def test_new_task_with_blocker(self):
         """Test creating task blocked by another task."""
         # Create blocker task first
@@ -258,6 +303,81 @@ class TestUpdateCommand(TempReadyQTest):
         tasks = readyq.load_tasks()
         self.assertEqual(len(tasks[0]['sessions']), 1)
         self.assertEqual(tasks[0]['sessions'][0]['log'], 'Session note')
+
+    def test_update_add_multiline_log(self):
+        """Test adding multiline session log to task."""
+        task = self.create_task_dict(title="Test task")
+        self.save_task(task)
+
+        multiline_log = "Line 1\nLine 2\nLine 3"
+        args = FakeArgs(
+            id=task['id'][:8],
+            log=multiline_log,
+            status=None,
+            title=None,
+            description=None,
+            delete_log=None,
+            add_blocks=None,
+            add_blocked_by=None,
+            remove_blocks=None,
+            remove_blocked_by=None
+        )
+
+        readyq.cmd_update(args)
+
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks[0]['sessions']), 1)
+        self.assertEqual(tasks[0]['sessions'][0]['log'], multiline_log)
+
+    def test_update_add_log_with_markdown_headers(self):
+        """Test adding session log with markdown headers."""
+        task = self.create_task_dict(title="Test task")
+        self.save_task(task)
+
+        log_with_headers = "## Work Done\nImplemented feature X\n\n### Testing\nRan all tests"
+        args = FakeArgs(
+            id=task['id'][:8],
+            log=log_with_headers,
+            status=None,
+            title=None,
+            description=None,
+            delete_log=None,
+            add_blocks=None,
+            add_blocked_by=None,
+            remove_blocks=None,
+            remove_blocked_by=None
+        )
+
+        readyq.cmd_update(args)
+
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks[0]['sessions']), 1)
+        self.assertEqual(tasks[0]['sessions'][0]['log'], log_with_headers)
+
+    def test_update_add_log_with_horizontal_rules(self):
+        """Test adding session log with horizontal rules."""
+        task = self.create_task_dict(title="Test task")
+        self.save_task(task)
+
+        log_with_hr = "Before section\n---\nAfter section"
+        args = FakeArgs(
+            id=task['id'][:8],
+            log=log_with_hr,
+            status=None,
+            title=None,
+            description=None,
+            delete_log=None,
+            add_blocks=None,
+            add_blocked_by=None,
+            remove_blocks=None,
+            remove_blocked_by=None
+        )
+
+        readyq.cmd_update(args)
+
+        tasks = readyq.load_tasks()
+        self.assertEqual(len(tasks[0]['sessions']), 1)
+        self.assertEqual(tasks[0]['sessions'][0]['log'], log_with_hr)
 
 
 class TestShowCommand(TempReadyQTest):

@@ -167,8 +167,9 @@ def md_load_tasks(db_file=None):
         content = f.read()
     
     # Find all task sections including the title line
-    # Note: \n---\n matches separator on its own line, preventing false matches with --- in content
-    task_sections = re.finditer(r'# Task: (.*?)\n(.*?)(?=\n---\n|\n# Task:|$)', content, re.DOTALL)
+    # Note: Task separator is "\n---\n\n" (blank line after), not just "\n---\n"
+    # This prevents matching horizontal rules inside descriptions/logs
+    task_sections = re.finditer(r'# Task: (.*?)\n(.*?)(?=\n---\n\n# Task:|\n# Task:|$)', content, re.DOTALL)
     
     for match in task_sections:
         title = match.group(1).strip()

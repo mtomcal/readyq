@@ -222,6 +222,44 @@ Launches a web server at `http://localhost:8000` with a clean, modern interface 
 | `--remove-blocks <ids>` | Remove task IDs that this task blocks (comma-separated, supports partial matching) |
 | `--remove-blocked-by <ids>` | Remove task IDs that block this task (comma-separated, supports partial matching) |
 
+### Multiline Descriptions and Logs
+
+Both descriptions and session logs support multiline content with full markdown formatting. Use shell syntax for multiline strings:
+
+```bash
+# Using $'...' syntax (ANSI-C quoting) - supports \n escape sequences
+./readyq.py new "Complex Task" --description $'## Overview\nThis is a detailed description.\n\n### Implementation Steps\n1. Step one\n2. Step two\n\n---\n\nNote: Works with markdown headers and horizontal rules'
+
+# Add multiline session log
+./readyq.py update <task-id> --log $'## Work Completed\n- Implemented feature X\n- Fixed bug Y\n\n### Next Steps\n- Add tests\n- Update docs'
+
+# Using heredoc for very long content
+./readyq.py new "Documentation Task" --description "$(cat <<'EOF'
+## Project Overview
+This is a comprehensive description with multiple sections.
+
+### Architecture
+The system uses a three-tier architecture:
+- Frontend: React
+- Backend: Python FastAPI
+- Database: PostgreSQL
+
+---
+
+### Implementation Notes
+Be sure to follow coding standards.
+EOF
+)"
+```
+
+**Supported Markdown Features:**
+- Headers (`##`, `###`)
+- Bold (`**bold**`) and italic (`*italic*`)
+- Lists (bulleted and numbered)
+- Code blocks (` ``` `)
+- Horizontal rules (`---`)
+- All markdown content is preserved exactly as entered
+
 ## File Format
 
 Tasks are stored in `.readyq.md` (human-readable markdown format). Each task is a separate section:
@@ -244,16 +282,42 @@ Tasks are stored in `.readyq.md` (human-readable markdown format). Each task is 
 
 ## Description
 
+<description>
 Add JWT-based authentication to API endpoints
+
+## Implementation Plan
+- Research JWT libraries (PyJWT, python-jose)
+- Implement middleware for token validation
+- Add refresh token mechanism
+
+---
+
+Note: Must maintain backwards compatibility with existing session-based auth.
+</description>
 
 ## Session Logs
 
 ### 2025-10-30T15:30:00.000000+00:00
+<log>
 Started research on JWT libraries. PyJWT looks good.
 
+## Libraries Evaluated
+- PyJWT: Simple, widely used
+- python-jose: More features, heavier
+</log>
+
 ### 2025-10-30T16:45:00.000000+00:00
+<log>
 Implemented basic middleware. Added tests. Need refresh token logic next.
+</log>
 ```
+
+**XML Tag Wrapping**: Descriptions and session logs are wrapped in `<description>` and `<log>` tags respectively. This prevents markdown parsing issues when content contains:
+- Headers (`##`, `###`) that could be mistaken for task sections
+- Horizontal rules (`---`) that could be mistaken for task separators
+- Other markdown syntax that needs to be preserved literally
+
+The parser supports both XML-wrapped format (current) and legacy format (without tags) for backward compatibility.
 
 ### Migration from JSONL
 
