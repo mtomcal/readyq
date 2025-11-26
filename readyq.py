@@ -167,7 +167,8 @@ def md_load_tasks(db_file=None):
         content = f.read()
     
     # Find all task sections including the title line
-    task_sections = re.finditer(r'# Task: (.*?)\n(.*?)(?=\n---|\n# Task:|$)', content, re.DOTALL)
+    # Note: \n---\n matches separator on its own line, preventing false matches with --- in content
+    task_sections = re.finditer(r'# Task: (.*?)\n(.*?)(?=\n---\n|\n# Task:|$)', content, re.DOTALL)
     
     for match in task_sections:
         title = match.group(1).strip()
@@ -234,17 +235,30 @@ def parse_task_section(content):
     else:
         task['status'] = 'open'  # Default if no checkbox is checked
     
-    # Parse description
-    desc_match = re.search(r'## Description\n\n(.*?)(?=\n##|\n---|$)', content, re.DOTALL)
+    # Parse description (try XML format first, then fallback to legacy)
+    desc_match = re.search(r'## Description\n\n<description>\n(.*?)\n</description>', content, re.DOTALL)
     if desc_match:
         task['description'] = desc_match.group(1).strip()
-    
-    # Parse session logs
+    else:
+        # Fallback to legacy format (backward compatibility)
+        desc_match = re.search(r'## Description\n\n(.*?)(?=\n##|\n---|$)', content, re.DOTALL)
+        if desc_match:
+            task['description'] = desc_match.group(1).strip()
+
+    # Parse session logs (try XML format first, then fallback to legacy)
     sessions = []
-    log_pattern = r'### (\d{4}-\d{2}-\d{2}T.*?)\n(.*?)(?=\n###|\n---|$)'
+    # Try XML-wrapped format
+    log_pattern = r'### (\d{4}-\d{2}-\d{2}T.*?)\n<log>\n(.*?)\n</log>'
     for match in re.finditer(log_pattern, content, re.DOTALL):
         timestamp, log_text = match.groups()
         sessions.append({"timestamp": timestamp, "log": log_text.strip()})
+
+    # If no XML logs found, try legacy format (backward compatibility)
+    if not sessions:
+        log_pattern = r'### (\d{4}-\d{2}-\d{2}T.*?)\n(.*?)(?=\n###|\n---|$)'
+        for match in re.finditer(log_pattern, content, re.DOTALL):
+            timestamp, log_text = match.groups()
+            sessions.append({"timestamp": timestamp, "log": log_text.strip()})
     
     if sessions:
         task['sessions'] = sessions
@@ -280,14 +294,18 @@ def generate_markdown_task(task):
     
     # Description
     md += "\n## Description\n\n"
+    md += "<description>\n"
     md += f"{task.get('description', '')}\n"
-    
+    md += "</description>\n"
+
     # Session logs
     if task.get('sessions'):
         md += "\n## Session Logs\n\n"
         for session in task['sessions']:
             md += f"### {session['timestamp']}\n"
-            md += f"{session['log']}\n\n"
+            md += "<log>\n"
+            md += f"{session['log']}\n"
+            md += "</log>\n\n"
     
     return md
 
@@ -681,6 +699,14 @@ CORE WORKFLOW
    ./readyq.py new "Set up database schema"
    ./readyq.py new "Build API endpoints" --description "REST API for user management"
 
+   # Multi-line descriptions using shell quoting (for complex task details):
+   ./readyq.py new "Refactor auth" --description $'Requirements:\n- Add JWT refresh tokens\n- Improve error handling\n- Add rate limiting'
+
+   # Or using literal newlines (press Enter inside quotes):
+   ./readyq.py new "Database migration" --description "Step 1: Backup data
+   Step 2: Run migrations
+   Step 3: Verify integrity"
+
 2. MANAGING DEPENDENCIES
    Link tasks to show blocking relationships (task A must complete before B):
 
@@ -708,6 +734,9 @@ CORE WORKFLOW
 
    ./readyq.py update <task-id> --log "Discovered the auth module uses JWT tokens"
    ./readyq.py show <task-id>  # View full task details with all session logs
+
+   # Session logs support multi-line content with markdown:
+   ./readyq.py update <task-id> --log $'## Findings\n- JWT tokens in auth/jwt.py\n- Refresh logic needs work'
 
 COMMON COMMANDS
 ───────────────
@@ -773,8 +802,12 @@ TIPS FOR AI AGENTS
 DATABASE LOCATION
 ─────────────────
 
-Default: ./.readyq.jsonl (in current directory)
-Format:  JSONL (one JSON task per line, git-friendly)
+Default: ./.readyq.md (in current directory)
+Format:  Markdown (human-readable, git-friendly)
+
+Note: Old JSONL files (.readyq.jsonl) are auto-migrated on first run.
+      Descriptions and logs use XML tags (<description>, <log>) to safely
+      handle markdown headers and special characters without parsing issues.
 
 NEXT STEPS
 ──────────
