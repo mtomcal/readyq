@@ -45,6 +45,73 @@ chmod +x readyq.py
 ./readyq.py web
 ```
 
+## AI Agent Workflow Example
+
+ReadyQ is designed to help AI agents maintain context and work autonomously through task queues. Here's a simple prompt pattern to get started:
+
+### Initial Setup Prompt
+
+```
+Please run `./readyq.py quickstart` to load the ReadyQ tutorial and understand
+how to use the task tracker. Then run `./readyq.py ready` to see what tasks are
+available to work on. Pick the first ready task and complete it, logging your
+progress as you go using `./readyq.py update <task-id> --log "progress notes"`.
+```
+
+**Pro Tip**: Store this prompt in your project for reuse:
+- **AGENTS.md** or **CLAUDE.md** - Many AI coding tools (like Claude Code) automatically read these files for project-specific instructions
+- **Custom slash command** - Create `.claude/commands/next-task.md` with the prompt, then use `/next-task` to invoke it
+
+### What Happens Next
+
+1. **Agent loads instructions**: The `quickstart` command displays a comprehensive tutorial covering:
+   - How to create tasks with dependencies
+   - How to log progress with `--log`
+   - How to update task status
+   - Best practices for AI agents
+
+2. **Agent picks a task**: The `ready` command shows all unblocked tasks ready to work on
+
+3. **Agent works autonomously**: The AI will:
+   - Read the task description with `./readyq.py show <task-id>`
+   - Update status to `in_progress`
+   - Log progress with `./readyq.py update <task-id> --log "What I learned/did"` as it works
+   - Mark task as `done` when complete
+   - Automatically unblock dependent tasks
+
+4. **Context persists across sessions**: When you resume work later, all session logs are preserved:
+   ```bash
+   ./readyq.py show <task-id>  # Review what was done previously
+   ```
+
+### Example Session
+
+```bash
+# You (setting up tasks):
+./readyq.py new "Refactor authentication module" \
+  --description "Migrate from session-based to JWT. Maintain backwards compatibility."
+./readyq.py new "Update auth documentation" --blocked-by <auth-task-id>
+./readyq.py new "Add auth integration tests" --blocked-by <auth-task-id>
+
+# AI Agent (working through the queue):
+./readyq.py ready                    # Shows: refactor authentication module
+./readyq.py update <id> --status in_progress
+./readyq.py update <id> --log "Analyzed current auth flow. Found 3 endpoints using sessions."
+./readyq.py update <id> --log "Implemented JWT middleware. Migrated login endpoint."
+./readyq.py update <id> --log "Migrated all endpoints. Tests passing."
+./readyq.py update <id> --status done
+
+./readyq.py ready                    # Shows: 2 newly unblocked tasks
+# Agent continues with next task...
+```
+
+### Benefits
+
+- **No context loss**: Session logs preserve what was learned across multiple AI conversations
+- **Clear priorities**: Dependency graph ensures tasks are done in the right order
+- **Autonomous operation**: AI can work through entire task queues without constant guidance
+- **Human oversight**: Review progress anytime with `show` or the web UI
+
 ## Installation
 
 ### Option 1: Direct Download
